@@ -1,0 +1,143 @@
+{
+  "theme": "light",
+  "archetype": "Swiss & High-Contrast (Archetype 4)",
+  "vibe": "Professional, authoritative, trustworthy, government enterprise.",
+  "bilingual_support": "Marathi + English interface labels",
+  "colors": {
+    "primary": "#2E3192",
+    "primary_hover": "#202266",
+    "accent_saffron": "#FF9933",
+    "accent_green": "#138808",
+    "background": "#F4F5F7",
+    "surface": "#FFFFFF",
+    "text_primary": "#0A0A0A",
+    "text_secondary": "#4B5563",
+    "text_muted": "#6B7280",
+    "border": "#E5E7EB",
+    "error": "#DC2626",
+    "success": "#16A34A",
+    "warning": "#D97706",
+    "info": "#2563EB"
+  },
+  "typography": {
+    "fonts": {
+      "heading": "'Chivo', sans-serif",
+      "body": "'IBM Plex Sans', sans-serif"
+    },
+    "scales": {
+      "h1": "text-3xl sm:text-4xl font-black text-[#0A0A0A] tracking-tight",
+      "h2": "text-2xl sm:text-3xl font-bold text-[#0A0A0A] tracking-tight",
+      "h3": "text-xl font-bold text-[#0A0A0A] tracking-tight",
+      "h4": "text-lg font-semibold text-[#0A0A0A]",
+      "body": "text-sm sm:text-base leading-relaxed text-[#4B5563]",
+      "label": "text-xs font-bold tracking-[0.05em] uppercase text-[#6B7280]"
+    }
+  },
+  "spacing_and_layout": {
+    "philosophy": "Data-dense, grid-based, strict hierarchy.",
+    "container": "w-full max-w-[1600px] mx-auto px-4 md:px-8",
+    "grid_dashboard": "grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6",
+    "radius": "rounded-md",
+    "shadows": {
+      "card": "shadow-sm",
+      "dropdown": "shadow-lg",
+      "modal": "shadow-xl"
+    }
+  },
+  "components": {
+    "sidebar": {
+      "style": "w-64 fixed h-screen bg-[#2E3192] text-white flex flex-col border-r border-[#202266]",
+      "nav_item": "flex items-center gap-3 px-4 py-3 text-sm font-medium hover:bg-[#202266] transition-colors rounded-md mx-2",
+      "nav_item_active": "flex items-center gap-3 px-4 py-3 text-sm font-medium bg-[#202266] text-white border-l-4 border-[#FF9933] rounded-r-md mx-2 ml-0"
+    },
+    "header": {
+      "style": "h-16 ml-64 bg-white border-b border-[#E5E7EB] flex items-center justify-between px-6 sticky top-0 z-40"
+    },
+    "cards": {
+      "base": "bg-white border border-[#E5E7EB] rounded-md p-6 shadow-sm",
+      "stat_card": "flex flex-col gap-2 bg-white border border-[#E5E7EB] rounded-md p-5 shadow-sm hover:-translate-y-0.5 transition-transform"
+    },
+    "tables": {
+      "container": "w-full border border-[#E5E7EB] rounded-md overflow-hidden bg-white",
+      "header_row": "bg-[#F9FAFB] border-b border-[#E5E7EB]",
+      "header_cell": "px-4 py-3 text-left text-xs font-bold text-[#4B5563] uppercase tracking-wider",
+      "body_row": "border-b border-[#E5E7EB] hover:bg-[#F9FAFB] transition-colors",
+      "body_cell": "px-4 py-3 text-sm text-[#0A0A0A]"
+    },
+    "buttons": {
+      "primary": "inline-flex items-center justify-center bg-[#2E3192] hover:bg-[#202266] text-white text-sm font-semibold py-2 px-4 rounded-md transition-colors focus:ring-2 focus:ring-[#2E3192] focus:ring-offset-2",
+      "secondary": "inline-flex items-center justify-center bg-white border border-[#D1D5DB] hover:bg-[#F9FAFB] text-[#4B5563] text-sm font-medium py-2 px-4 rounded-md transition-colors",
+      "accent_saffron": "inline-flex items-center justify-center bg-[#FF9933] hover:bg-[#E68A2E] text-white text-sm font-semibold py-2 px-4 rounded-md transition-colors",
+      "danger": "inline-flex items-center justify-center bg-[#DC2626] hover:bg-[#B91C1C] text-white text-sm font-semibold py-2 px-4 rounded-md transition-colors"
+    },
+    "badges": {
+      "base": "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold",
+      "saffron": "bg-[#FF9933]/15 text-[#B36B22]",
+      "green": "bg-[#138808]/15 text-[#0E6306]",
+      "blue": "bg-[#2E3192]/10 text-[#2E3192]",
+      "gray": "bg-gray-100 text-gray-800"
+    },
+    "inputs": {
+      "base": "w-full border border-[#D1D5DB] rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2E3192] focus:border-transparent bg-white text-[#0A0A0A] placeholder-[#9CA3AF]"
+    },
+    "stepper": {
+      "container": "flex items-center justify-between w-full mb-8 relative",
+      "step_active": "flex flex-col items-center gap-2 relative z-10 text-[#2E3192]",
+      "step_inactive": "flex flex-col items-center gap-2 relative z-10 text-[#9CA3AF]",
+      "circle_active": "w-10 h-10 rounded-full bg-[#2E3192] text-white flex items-center justify-center font-bold text-sm border-4 border-white shadow-sm",
+      "circle_inactive": "w-10 h-10 rounded-full bg-white text-[#9CA3AF] flex items-center justify-center font-bold text-sm border-2 border-[#E5E7EB]",
+      "line": "absolute top-5 left-0 w-full h-0.5 bg-[#E5E7EB] -z-0",
+      "line_active": "absolute top-5 left-0 h-0.5 bg-[#2E3192] -z-0 transition-all duration-300"
+    }
+  },
+  "icons": {
+    "library": "lucide-react",
+    "recommendations": {
+      "Dashboard": "LayoutDashboard",
+      "Staff_Management": "Users",
+      "New_Bandobast": "ShieldPlus",
+      "Reports": "FileBarChart",
+      "Map": "Map",
+      "Settings": "Settings",
+      "Calendar": "Calendar",
+      "Export": "Download",
+      "Import": "Upload",
+      "QR": "QrCode",
+      "Print": "Printer",
+      "Add": "Plus"
+    }
+  },
+  "media": {
+    "police_officer_portrait_1": {
+      "url": "https://images.unsplash.com/photo-1657160929797-4918e27b0678?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2MTJ8MHwxfHNlYXJjaHwyfHxwb2xpY2UlMjBvZmZpY2VyJTIwcG9ydHJhaXR8ZW58MHx8fHwxNzc2ODUzNzI3fDA&ixlib=rb-4.1.0&q=85",
+      "description": "Used as a placeholder photo for police staff in the data table or ID card mockups"
+    },
+    "police_officer_portrait_2": {
+      "url": "https://images.unsplash.com/photo-1722461080536-2c2883c5a243?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2MTJ8MHwxfHNlYXJjaHwzfHxwb2xpY2UlMjBvZmZpY2VyJTIwcG9ydHJhaXR8ZW58MHx8fHwxNzc2ODUzNzI3fDA&ixlib=rb-4.1.0&q=85",
+      "description": "Used as a secondary placeholder photo for police staff"
+    },
+    "auth_background": {
+      "url": "https://images.unsplash.com/photo-1688055536554-2716ab46aaaf?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2NDJ8MHwxfHNlYXJjaHwxfHxwb2xpY2UlMjBzdGF0aW9uJTIwYnVpbGRpbmd8ZW58MHx8fHwxNzc2ODUzNzI3fDA&ixlib=rb-4.1.0&q=85",
+      "description": "Abstract/building background for the login screen or auth layout"
+    }
+  },
+  "design_system_rules": [
+    "Dense dashboard format: Ensure tables can fit many rows on screen. Limit padding inside table cells to px-4 py-2 or py-3.",
+    "Form inputs must have clear, permanently visible labels (no floating labels).",
+    "Primary CTA (e.g., 'Deploy', 'Next Step') should be placed on the bottom right of modals or wizards.",
+    "Avoid glassmorphism. This is a government admin app; prioritize sharp readability and solid, high-contrast surfaces.",
+    "Include 'data-testid' on all interactive elements (buttons, inputs, tabs).",
+    "Tabs in Staff Management must look like distinct folder tabs or pill-shaped segmented controls, not just underlined text.",
+    "Use a stepper component for the 5-Step Bandobast wizard to clearly communicate progress.",
+    "Implement clear visual hierarchies for map points and QR codes."
+  ],
+  "instructions_to_main_agent": [
+    "Use 'Chivo' for headings and 'IBM Plex Sans' for body text. Import via Google Fonts in index.html or global css.",
+    "Install 'lucide-react' for icons.",
+    "Implement standard shadcn/ui components (Tables, Dialogs, Select, Tabs, Calendar) and customize them to use the defined colors, primarily #2E3192 (Navy) for the active state.",
+    "For the Bandobast Wizard, create a state-driven multi-step form utilizing the stepper classes defined in the guidelines.",
+    "Ensure responsiveness, but prioritize desktop views (lg and xl) as this is an enterprise admin dashboard.",
+    "Mock the map view using a placeholder container or a lightweight map library like 'react-simple-maps' or a static image if interactive maps are out of scope, but UI should imply Google Maps integration.",
+    "Bilingual support can be mocked by showing labels like 'Dashboard / डॅशबोर्ड' or just providing an English UI with a note for Marathi localization structure."
+  ]
+}
