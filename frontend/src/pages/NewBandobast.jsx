@@ -495,6 +495,8 @@ function AllotmentStep({ bandobast, bid, staff, onRefresh }) {
   const [allot, setAllot] = useState(bandobast?.allotments || {});
   const [activePoint, setActivePoint] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [seqDraft, setSeqDraft] = useState({}); // pointId -> string
+  const [filters, setFilters] = useState({ officer: "", amaldar_m: "", amaldar_f: "", home_guard: "" });
 
   useEffect(() => {
     setAllot(bandobast?.allotments || {});
@@ -504,14 +506,63 @@ function AllotmentStep({ bandobast, bid, staff, onRefresh }) {
 
   const selectedIds = bandobast?.selected_staff_ids || [];
   const allottedSet = new Set(Object.values(allot).flat());
-  const points = (bandobast?.points || []).filter((p) => !p.is_reserved);
+  // sort points by seq (reserved always last)
+  const allPoints = [...(bandobast?.points || [])].sort((a, b) => {
+    if (a.is_reserved && !b.is_reserved) return 1;
+    if (!a.is_reserved && b.is_reserved) return -1;
+    return (a.seq || 0) - (b.seq || 0);
+  });
+
+  // Group by sector
+  const grouped = [];
+  let currentGroup = null;
+  for (const p of allPoints) {
+    const key = p.is_reserved ? "__reserved__" : (p.sector || "__none__");
+    if (!currentGroup || currentGroup.key !== key) {
+      currentGroup = { key, sector: p.is_reserved ? "" : (p.sector || ""), points: [] };
+      grouped.push(currentGroup);
+    }
+    currentGroup.points.push(p);
+  }
 
   const available = staff.filter((s) => selectedIds.includes(s.id) && !allottedSet.has(s.id));
+
+  // Partition available staff
+  const partitions = {
+    officer: available.filter((s) => s.staff_type === "officer"),
+    amaldar_m: available.filter((s) => s.staff_type === "amaldar" && s.gender !== "Female"),
+    amaldar_f: available.filter((s) => s.staff_type === "amaldar" && s.gender === "Female"),
+    home_guard: available.filter((s) => s.staff_type === "home_guard"),
+  };
+
+  const applyFilter = (list, q) => {
+    if (!q) return list;
+    const needle = q.toLowerCase().trim();
+    return list.filter(
+      (s) =>
+        s.bakkal_no?.toLowerCase().includes(needle) ||
+        s.name?.toLowerCase().includes(needle) ||
+        (s.posting || "").toLowerCase().includes(needle)
+    );
+  };
+
+  const currentPt = allPoints.find((p) => p.id === activePoint);
   const current = activePoint ? (allot[activePoint] || []) : [];
-  const currentPt = points.find((p) => p.id === activePoint);
+
+  // Count how many of each role are already allotted to a point
+  const rolesAllotted = (pt) => {
+    const sids = allot[pt.id] || [];
+    const assigned = sids.map((id) => staff.find((s) => s.id === id)).filter(Boolean);
+    return {
+      officer: assigned.filter((s) => s.staff_type === "officer").length,
+      amaldar: assigned.filter((s) => s.staff_type === "amaldar" && s.gender !== "Female").length,
+      amaldar_f: assigned.filter((s) => s.staff_type === "amaldar" && s.gender === "Female").length,
+      home_guard: assigned.filter((s) => s.staff_type === "home_guard").length,
+    };
+  };
 
   const addToPoint = (sid) => {
-    if (!activePoint) return;
+    if (!activePoint) { toast.error("Select a point first"); return; }
     setAllot({ ...allot, [activePoint]: [...(allot[activePoint] || []), sid] });
   };
   const removeFromPoint = (sid) => {
@@ -521,132 +572,211 @@ function AllotmentStep({ bandobast, bid, staff, onRefresh }) {
   const save = async () => {
     setSaving(true);
     await api.put(`/bandobasts/${bid}/allotments`, { allotments: allot });
-    toast.success("Allotment saved. Unallocated staff moved to Reserved.");
+    toast.success("Allotment saved");
     onRefresh();
     setSaving(false);
+  };
+
+  const commitSeq = async (pid, currentSeq) => {
+    const raw = seqDraft[pid];
+    if (raw === undefined || raw === "") return;
+    const n = parseInt(raw, 10);
+    if (isNaN(n) || n === currentSeq) {
+      setSeqDraft((d) => ({ ...d, [pid]: undefined }));
+      return;
+    }
+    try {
+      await api.patch(`/bandobasts/${bid}/points/${pid}/seq`, { seq: n });
+      onRefresh();
+    } catch {
+      toast.error("Failed to update sequence");
+    }
+    setSeqDraft((d) => ({ ...d, [pid]: undefined }));
   };
 
   const getStaff = (id) => staff.find((s) => s.id === id);
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <div>
           <h3 className="font-display font-bold text-xl">Allot Staff to Points</h3>
-          <p className="text-sm text-[#6B7280]">Unallocated staff will auto-reserve.</p>
+          <p className="text-sm text-[#6B7280]">Edit sequence by typing. Unallocated staff will move to Reserved on Deploy.</p>
         </div>
         <Button className="bg-[#138808] hover:bg-[#0E6306] text-white" onClick={save} disabled={saving} data-testid="save-allotment-btn">
           <Save className="w-4 h-4 mr-2" /> Save Allotment
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Points list */}
-        <div className="bg-white border border-[#E5E7EB] rounded-md p-4">
+      <div className="grid grid-cols-1 xl:grid-cols-[340px_1fr_320px] gap-4">
+        {/* Points list (grouped by sector) */}
+        <div className="bg-white border border-[#E5E7EB] rounded-md p-4 max-h-[720px] overflow-auto">
           <h4 className="font-bold text-sm uppercase tracking-wider text-[#6B7280] mb-3">Points</h4>
-          <div className="space-y-2 max-h-[600px] overflow-auto">
-            {points.map((p) => {
-              const reqTotal =
-                (p.req_officer || 0) + (p.req_amaldar || 0) + (p.req_female_amaldar || 0) + (p.req_home_guard || 0);
-              const done = (allot[p.id] || []).length;
-              const active = activePoint === p.id;
+          <div className="space-y-4">
+            {grouped.map((g, gi) => {
+              const multi = g.points.length > 1 && !g.points[0].is_reserved && g.sector;
               return (
-                <button
-                  key={p.id}
-                  onClick={() => setActivePoint(p.id)}
-                  data-testid={`point-tab-${p.id}`}
-                  className={`w-full text-left px-3 py-2.5 rounded-md border transition ${
-                    active ? "bg-[#2E3192] text-white border-[#2E3192]" : "border-[#E5E7EB] hover:bg-[#F9FAFB]"
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="font-semibold text-sm truncate">{p.point_name}</div>
-                    <div className={`text-[10px] font-mono font-bold whitespace-nowrap ${active ? "text-white/90" : "text-[#138808]"}`}>
-                      {done}/{reqTotal}
-                    </div>
-                  </div>
-                  {/* Requirement breakdown */}
-                  <div className="mt-1.5 grid grid-cols-2 gap-1 text-[10px]">
-                    <div className={`flex items-center justify-between px-1.5 py-0.5 rounded ${active ? "bg-white/10" : "bg-[#2E3192]/5"}`}>
-                      <span className={active ? "text-white/80" : "text-[#6B7280]"}>Officer</span>
-                      <span className={`font-bold ${active ? "text-white" : "text-[#2E3192]"}`}>{p.req_officer || 0}</span>
-                    </div>
-                    <div className={`flex items-center justify-between px-1.5 py-0.5 rounded ${active ? "bg-white/10" : "bg-[#138808]/5"}`}>
-                      <span className={active ? "text-white/80" : "text-[#6B7280]"}>Amaldar</span>
-                      <span className={`font-bold ${active ? "text-white" : "text-[#138808]"}`}>{p.req_amaldar || 0}</span>
-                    </div>
-                    <div className={`flex items-center justify-between px-1.5 py-0.5 rounded ${active ? "bg-white/10" : "bg-[#FF9933]/10"}`}>
-                      <span className={active ? "text-white/80" : "text-[#6B7280]"}>F. Amaldar</span>
-                      <span className={`font-bold ${active ? "text-white" : "text-[#B36B22]"}`}>{p.req_female_amaldar || 0}</span>
-                    </div>
-                    <div className={`flex items-center justify-between px-1.5 py-0.5 rounded ${active ? "bg-white/10" : "bg-[#2563EB]/5"}`}>
-                      <span className={active ? "text-white/80" : "text-[#6B7280]"}>H. Guard</span>
-                      <span className={`font-bold ${active ? "text-white" : "text-[#2563EB]"}`}>{p.req_home_guard || 0}</span>
-                    </div>
-                  </div>
-                  {/* Equipment */}
-                  {p.equipment && p.equipment.length > 0 && (
-                    <div className="mt-1.5 flex flex-wrap gap-1">
-                      {p.equipment.map((eq) => (
-                        <span
-                          key={eq}
-                          className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${
-                            active ? "bg-white/20 text-white" : "bg-[#F3F4F6] text-[#4B5563]"
-                          }`}
-                        >
-                          {eq}
-                        </span>
-                      ))}
+                <div key={gi} className={multi ? "relative pl-3 border-l-4 border-[#FF9933] rounded" : ""}>
+                  {multi && (
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-[#B36B22] mb-1 -ml-3 pl-3">
+                      Sector: {g.sector}
                     </div>
                   )}
-                </button>
+                  <div className="space-y-2">
+                    {g.points.map((p) => {
+                      const active = activePoint === p.id;
+                      const alr = rolesAllotted(p);
+                      const chip = (label, done, req, color) => (
+                        <div className={`flex items-center justify-between px-1.5 py-0.5 rounded ${active ? "bg-white/10" : `bg-[${color}]/5`}`}>
+                          <span className={active ? "text-white/80" : "text-[#6B7280]"}>{label}</span>
+                          <span className={`font-mono font-bold ${active ? "text-white" : ""}`} style={{ color: active ? "#fff" : color }}>
+                            {done}/{req}
+                          </span>
+                        </div>
+                      );
+                      return (
+                        <div
+                          key={p.id}
+                          className={`rounded-md border ${active ? "bg-[#2E3192] text-white border-[#2E3192]" : "border-[#E5E7EB] bg-white hover:bg-[#F9FAFB]"}`}
+                        >
+                          <div className="flex items-center gap-2 px-2 py-2">
+                            {/* Seq input */}
+                            {!p.is_reserved ? (
+                              <input
+                                type="number"
+                                value={seqDraft[p.id] !== undefined ? seqDraft[p.id] : (p.seq || 0)}
+                                onChange={(e) => setSeqDraft((d) => ({ ...d, [p.id]: e.target.value }))}
+                                onBlur={() => commitSeq(p.id, p.seq || 0)}
+                                onKeyDown={(e) => e.key === "Enter" && e.target.blur()}
+                                data-testid={`seq-input-${p.id}`}
+                                className={`w-10 text-center text-xs font-mono font-bold rounded border ${active ? "bg-white/10 border-white/30 text-white" : "bg-white border-[#E5E7EB] text-[#0A0A0A]"} focus:outline-none focus:ring-1 focus:ring-[#FF9933]`}
+                              />
+                            ) : (
+                              <div className="w-10 text-center text-xs font-mono font-bold text-[#FF9933]">R</div>
+                            )}
+                            <button
+                              className="flex-1 text-left"
+                              onClick={() => setActivePoint(p.id)}
+                              data-testid={`point-tab-${p.id}`}
+                            >
+                              <div className="font-semibold text-sm truncate">
+                                {p.point_name}
+                                {p.is_reserved && <Badge className="ml-2 bg-[#FF9933]/15 text-[#B36B22]">Reserved</Badge>}
+                              </div>
+                            </button>
+                          </div>
+                          <div className="px-2 pb-2 grid grid-cols-2 gap-1 text-[10px]">
+                            {chip("Officer", alr.officer, p.req_officer || 0, "#2E3192")}
+                            {chip("Amaldar", alr.amaldar, p.req_amaldar || 0, "#138808")}
+                            {chip("F. Amaldar", alr.amaldar_f, p.req_female_amaldar || 0, "#B36B22")}
+                            {chip("H. Guard", alr.home_guard, p.req_home_guard || 0, "#2563EB")}
+                          </div>
+                          {p.equipment && p.equipment.length > 0 && (
+                            <div className="px-2 pb-2 flex flex-wrap gap-1">
+                              {p.equipment.map((eq) => (
+                                <span
+                                  key={eq}
+                                  className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${active ? "bg-white/20 text-white" : "bg-[#F3F4F6] text-[#4B5563]"}`}
+                                >
+                                  {eq}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+            {grouped.length === 0 && <div className="text-sm text-[#6B7280] text-center py-6">No points.</div>}
+          </div>
+        </div>
+
+        {/* Available - 4 partitions */}
+        <div className="bg-white border border-[#E5E7EB] rounded-md p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="font-bold text-sm uppercase tracking-wider text-[#6B7280]">
+              Available ({available.length})
+            </h4>
+            {!activePoint && <span className="text-xs text-[#DC2626]">Select a point to allot</span>}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[680px] overflow-auto">
+            {[
+              { key: "officer", title: "Officers", color: "#2E3192", data: partitions.officer },
+              { key: "amaldar_m", title: "Amaldar (M)", color: "#138808", data: partitions.amaldar_m },
+              { key: "amaldar_f", title: "Female Amaldar", color: "#B36B22", data: partitions.amaldar_f },
+              { key: "home_guard", title: "Home Guards", color: "#2563EB", data: partitions.home_guard },
+            ].map((part) => {
+              const filtered = applyFilter(part.data, filters[part.key]);
+              return (
+                <div key={part.key} className="border border-[#E5E7EB] rounded-md overflow-hidden flex flex-col">
+                  <div
+                    className="px-2.5 py-1.5 flex items-center justify-between border-b border-[#E5E7EB]"
+                    style={{ background: `${part.color}10`, color: part.color }}
+                  >
+                    <div className="font-bold text-xs uppercase tracking-wider">{part.title}</div>
+                    <div className="font-mono font-bold text-xs">{filtered.length}/{part.data.length}</div>
+                  </div>
+                  <div className="p-2 border-b border-[#E5E7EB]">
+                    <input
+                      value={filters[part.key]}
+                      onChange={(e) => setFilters({ ...filters, [part.key]: e.target.value })}
+                      placeholder="Bakkal / Name / Posting"
+                      className="w-full text-xs border border-[#E5E7EB] rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-[#2E3192]"
+                      data-testid={`filter-${part.key}`}
+                    />
+                  </div>
+                  <div className="flex-1 overflow-auto max-h-[260px] space-y-1 p-2">
+                    {filtered.map((s) => (
+                      <div
+                        key={s.id}
+                        className="flex items-center justify-between p-1.5 border border-[#E5E7EB] rounded hover:bg-[#F9FAFB]"
+                      >
+                        <div className="min-w-0">
+                          <div className="text-xs font-semibold truncate">{s.name}</div>
+                          <div className="text-[10px] text-[#6B7280] truncate">
+                            {s.rank} · {s.bakkal_no}
+                            {s.posting && ` · ${s.posting}`}
+                          </div>
+                        </div>
+                        <button
+                          className="text-[#2E3192] hover:bg-[#2E3192]/10 rounded p-1 flex-shrink-0"
+                          onClick={() => addToPoint(s.id)}
+                          disabled={!activePoint}
+                          data-testid={`allot-add-${s.id}`}
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                    {filtered.length === 0 && (
+                      <div className="text-[10px] text-[#6B7280] text-center py-3">None</div>
+                    )}
+                  </div>
+                </div>
               );
             })}
           </div>
         </div>
 
-        {/* Available */}
-        <div className="bg-white border border-[#E5E7EB] rounded-md p-4">
-          <h4 className="font-bold text-sm uppercase tracking-wider text-[#6B7280] mb-3">
-            Available ({available.length})
-          </h4>
-          <div className="max-h-[500px] overflow-auto space-y-1">
-            {available.map((s) => (
-              <div key={s.id} className="flex items-center justify-between p-2 border border-[#E5E7EB] rounded hover:bg-[#F9FAFB]">
-                <div>
-                  <div className="text-sm font-semibold">{s.name}</div>
-                  <div className="text-xs text-[#6B7280]">{s.rank} · {s.bakkal_no}</div>
-                </div>
-                <button
-                  className="text-[#2E3192] hover:bg-[#2E3192]/10 rounded p-1"
-                  onClick={() => addToPoint(s.id)}
-                  disabled={!activePoint}
-                  data-testid={`allot-add-${s.id}`}
-                >
-                  <Plus className="w-4 h-4" />
-                </button>
-              </div>
-            ))}
-            {available.length === 0 && <div className="text-sm text-[#6B7280] text-center py-6">All selected staff allotted.</div>}
-          </div>
-        </div>
-
         {/* Current point allottees */}
-        <div className="bg-white border border-[#E5E7EB] rounded-md p-4">
+        <div className="bg-white border border-[#E5E7EB] rounded-md p-4 max-h-[720px] overflow-auto">
           <h4 className="font-bold text-sm uppercase tracking-wider text-[#6B7280] mb-3">
             {currentPt ? currentPt.point_name : "Select a point"} ({current.length})
           </h4>
-          <div className="max-h-[500px] overflow-auto space-y-1">
+          <div className="space-y-1">
             {current.map((sid) => {
               const s = getStaff(sid);
               if (!s) return null;
               return (
                 <div key={sid} className="flex items-center justify-between p-2 border border-[#E5E7EB] rounded bg-[#F9FAFB]">
-                  <div>
-                    <div className="text-sm font-semibold">{s.name}</div>
-                    <div className="text-xs text-[#6B7280]">{s.rank} · {s.bakkal_no}</div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold truncate">{s.name}</div>
+                    <div className="text-xs text-[#6B7280] truncate">{s.rank} · {s.bakkal_no}{s.posting && ` · ${s.posting}`}</div>
                   </div>
-                  <button className="text-[#DC2626] hover:bg-[#FEE2E2] rounded p-1" onClick={() => removeFromPoint(sid)} data-testid={`allot-remove-${sid}`}>
+                  <button className="text-[#DC2626] hover:bg-[#FEE2E2] rounded p-1 flex-shrink-0" onClick={() => removeFromPoint(sid)} data-testid={`allot-remove-${sid}`}>
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
@@ -665,9 +795,10 @@ function DeployStep({ bandobast, bid, staff, onRefresh, navigate }) {
   const [deploying, setDeploying] = useState(false);
 
   const deploy = async () => {
+    if (!window.confirm("Deploy this bandobast? All unallocated selected staff will be moved to Reserved.")) return;
     setDeploying(true);
-    await api.post(`/bandobasts/${bid}/deploy`);
-    toast.success("Bandobast Deployed!");
+    const { data } = await api.post(`/bandobasts/${bid}/deploy`);
+    toast.success(`Deployed! ${data.reserved_count || 0} staff reserved.`);
     onRefresh();
     setDeploying(false);
   };
@@ -740,37 +871,68 @@ function DeployStep({ bandobast, bid, staff, onRefresh, navigate }) {
         </div>
       ) : (
         <div className="bg-white border border-[#E5E7EB] rounded-md">
-          <Table>
-            <TableHeader className="bg-[#F9FAFB]">
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Rank</TableHead>
-                <TableHead>Bakkal</TableHead>
-                <TableHead>Points</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(bandobast?.selected_staff_ids || []).map((sid) => {
-                const s = getStaff(sid);
-                if (!s) return null;
-                const assignedPoints = points.filter((p) => (allot[p.id] || []).includes(sid));
-                return (
-                  <TableRow key={sid}>
-                    <TableCell className="font-medium">{s.name}</TableCell>
-                    <TableCell>{s.rank}</TableCell>
-                    <TableCell className="font-mono">{s.bakkal_no}</TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {assignedPoints.map((p) => (
-                          <Badge key={p.id} className="bg-[#2E3192]/10 text-[#2E3192]">{p.point_name}</Badge>
-                        ))}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+          <div className="flex items-center justify-between p-3 border-b border-[#E5E7EB]">
+            <div className="text-sm text-[#6B7280]">
+              Showing {(bandobast?.selected_staff_ids || []).length} amaldar with allotment details
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => window.open(`${BACKEND_URL}/api/bandobasts/${bid}/export/staff-wise`, "_blank")}
+              data-testid="download-staff-wise-btn"
+            >
+              <Download className="w-4 h-4 mr-2" /> Download Excel
+            </Button>
+          </div>
+          <div className="overflow-auto">
+            <Table>
+              <TableHeader className="bg-[#F9FAFB]">
+                <TableRow>
+                  <TableHead>Sr.</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Rank</TableHead>
+                  <TableHead>Bakkal</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Posting</TableHead>
+                  <TableHead>Mobile</TableHead>
+                  <TableHead>Gender</TableHead>
+                  <TableHead>District</TableHead>
+                  <TableHead>Category</TableHead>
+                  <TableHead>Points</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(bandobast?.selected_staff_ids || []).map((sid, idx) => {
+                  const s = getStaff(sid);
+                  if (!s) return null;
+                  const assignedPoints = points.filter((p) => (allot[p.id] || []).includes(sid));
+                  return (
+                    <TableRow key={sid}>
+                      <TableCell>{idx + 1}</TableCell>
+                      <TableCell><Badge className="bg-[#2E3192]/10 text-[#2E3192]">{s.staff_type}</Badge></TableCell>
+                      <TableCell>{s.rank}</TableCell>
+                      <TableCell className="font-mono">{s.bakkal_no}</TableCell>
+                      <TableCell className="font-medium">{s.name}</TableCell>
+                      <TableCell className="text-xs">{s.posting || "-"}</TableCell>
+                      <TableCell className="font-mono text-xs">{s.mobile || "-"}</TableCell>
+                      <TableCell>{s.gender}</TableCell>
+                      <TableCell>{s.district}</TableCell>
+                      <TableCell>{s.category || "-"}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1">
+                          {assignedPoints.map((p) => (
+                            <Badge key={p.id} className={p.is_reserved ? "bg-[#FF9933]/15 text-[#B36B22]" : "bg-[#2E3192]/10 text-[#2E3192]"}>
+                              {p.point_name}
+                            </Badge>
+                          ))}
+                          {assignedPoints.length === 0 && <span className="text-xs text-[#6B7280]">Unallotted</span>}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
         </div>
       )}
     </div>

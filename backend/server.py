@@ -80,6 +80,7 @@ class StaffUpdate(BaseModel):
 class BandobastPoint(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     point_name: str
+    seq: int = 0
     req_officer: int = 0
     req_amaldar: int = 0
     req_female_amaldar: int = 0
@@ -402,8 +403,26 @@ async def add_point(bid: str, point: BandobastPoint):
         raise HTTPException(status_code=404, detail="Not found")
     if not point.id:
         point.id = str(uuid.uuid4())
+    if not point.seq:
+        existing_seqs = [p.get("seq", 0) for p in bandobast.get("points", []) if not p.get("is_reserved")]
+        point.seq = (max(existing_seqs) if existing_seqs else 0) + 1
     await db.bandobasts.update_one({"id": bid}, {"$push": {"points": point.model_dump()}})
     return point
+
+
+class PointSeqUpdate(BaseModel):
+    seq: int
+
+
+@api_router.patch("/bandobasts/{bid}/points/{pid}/seq")
+async def update_point_seq(bid: str, pid: str, payload: PointSeqUpdate):
+    res = await db.bandobasts.update_one(
+        {"id": bid, "points.id": pid},
+        {"$set": {"points.$.seq": payload.seq}},
+    )
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Not found")
+    return {"ok": True}
 
 
 @api_router.patch("/bandobasts/{bid}/points/{pid}", response_model=BandobastPoint)
@@ -449,15 +468,23 @@ async def set_allotments(bid: str, payload: AllotmentPayload):
     bandobast = await db.bandobasts.find_one({"id": bid}, {"_id": 0})
     if not bandobast:
         raise HTTPException(status_code=404, detail="Not found")
-    allot = payload.allotments
-    # Auto-reserve remaining
+    await db.bandobasts.update_one({"id": bid}, {"$set": {"allotments": payload.allotments}})
+    return {"ok": True}
+
+
+# ---- Deploy ----
+@api_router.post("/bandobasts/{bid}/deploy")
+async def deploy_bandobast(bid: str):
+    bandobast = await db.bandobasts.find_one({"id": bid}, {"_id": 0})
+    if not bandobast:
+        raise HTTPException(status_code=404, detail="Not found")
+    allot = dict(bandobast.get("allotments", {}))
     selected = set(bandobast.get("selected_staff_ids", []))
     allotted = set()
     for sids in allot.values():
         allotted.update(sids)
     remaining = list(selected - allotted)
     reserved_point_id = None
-    # find reserved point
     for p in bandobast.get("points", []):
         if p.get("is_reserved"):
             reserved_point_id = p["id"]
@@ -469,20 +496,13 @@ async def set_allotments(bid: str, payload: AllotmentPayload):
                 id=reserved_point_id,
                 point_name="Reserved / राखीव",
                 is_reserved=True,
+                seq=9999,
             ).model_dump()
             await db.bandobasts.update_one({"id": bid}, {"$push": {"points": reserved_point}})
         allot[reserved_point_id] = list(set(allot.get(reserved_point_id, []) + remaining))
-    await db.bandobasts.update_one({"id": bid}, {"$set": {"allotments": allot}})
-    return {"ok": True, "reserved_point_id": reserved_point_id, "reserved_count": len(remaining)}
-
-
-# ---- Deploy ----
-@api_router.post("/bandobasts/{bid}/deploy")
-async def deploy_bandobast(bid: str):
-    res = await db.bandobasts.update_one({"id": bid}, {"$set": {"status": "deployed"}})
-    if res.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Not found")
-    return {"ok": True, "status": "deployed"}
+        await db.bandobasts.update_one({"id": bid}, {"$set": {"allotments": allot}})
+    await db.bandobasts.update_one({"id": bid}, {"$set": {"status": "deployed"}})
+    return {"ok": True, "status": "deployed", "reserved_count": len(remaining)}
 
 
 # ---- QR Code ----
@@ -538,6 +558,56 @@ async def goshwara(bid: str):
         "point_wise": point_wise,
         "staff_wise": staff_wise,
     }
+
+
+@api_router.get("/bandobasts/{bid}/export/staff-wise")
+async def export_staff_wise(bid: str):
+    bandobast = await db.bandobasts.find_one({"id": bid}, {"_id": 0})
+    if not bandobast:
+        raise HTTPException(status_code=404, detail="Not found")
+    all_ids = list({sid for sids in bandobast.get("allotments", {}).values() for sid in sids})
+    selected_ids = bandobast.get("selected_staff_ids", [])
+    combined = list({*selected_ids, *all_ids})
+    staff_list = await db.staff.find({"id": {"$in": combined}}, {"_id": 0}).to_list(5000)
+    staff_map = {s["id"]: s for s in staff_list}
+    points = bandobast.get("points", [])
+    allot = bandobast.get("allotments", {})
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Amaldar-wise"
+    ws.append([
+        "Sr", "Type", "Rank", "Bakkal No", "Name", "Posting", "Mobile",
+        "Gender", "District", "Category", "Allotted Points",
+    ])
+    i = 1
+    for sid in selected_ids or list(staff_map.keys()):
+        s = staff_map.get(sid)
+        if not s:
+            continue
+        assigned = [p["point_name"] for p in points if sid in allot.get(p["id"], [])]
+        ws.append([
+            i,
+            s.get("staff_type", ""),
+            s.get("rank", ""),
+            s.get("bakkal_no", ""),
+            s.get("name", ""),
+            s.get("posting", ""),
+            s.get("mobile", ""),
+            s.get("gender", ""),
+            s.get("district", ""),
+            s.get("category", ""),
+            ", ".join(assigned) or "-",
+        ])
+        i += 1
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    safe_name = (bandobast.get("name") or "bandobast").replace(" ", "_")
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={safe_name}_amaldar_wise.xlsx"},
+    )
 
 
 # ========================= APP SETUP =========================
