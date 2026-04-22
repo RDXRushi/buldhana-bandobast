@@ -1,49 +1,32 @@
-import { useEffect } from "react";
+import React from "react";
 import "@/App.css";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import axios from "axios";
-
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
-
-const Home = () => {
-  const helloWorldApi = async () => {
-    try {
-      const response = await axios.get(`${API}/`);
-      console.log(response.data.message);
-    } catch (e) {
-      console.error(e, `errored out requesting / api`);
-    }
-  };
-
-  useEffect(() => {
-    helloWorldApi();
-  }, []);
-
-  return (
-    <div>
-      <header className="App-header">
-        <a
-          className="App-link"
-          href="https://emergent.sh"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <img src="https://avatars.githubusercontent.com/in/1201222?s=120&u=2686cf91179bbafbc7a71bfbc43004cf9ae1acea&v=4" />
-        </a>
-        <p className="mt-5">Building something incredible ~!</p>
-      </header>
-    </div>
-  );
-};
+import AdminLayout from "./layouts/AdminLayout";
+import Dashboard from "./pages/Dashboard";
+import StaffManagement from "./pages/StaffManagement";
+import NewBandobast from "./pages/NewBandobast";
+import BandobastDetail from "./pages/BandobastDetail";
+import PrintIDCard from "./pages/PrintIDCard";
+import PrintDutyPass from "./pages/PrintDutyPass";
+import PrintGoshwara from "./pages/PrintGoshwara";
 
 function App() {
   return (
     <div className="App">
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Home />}>
-            <Route index element={<Home />} />
+          {/* Print routes (no layout) */}
+          <Route path="/print/id-card/:staffId" element={<PrintIDCard />} />
+          <Route path="/print/duty-pass/:bid/:pid/:sid" element={<PrintDutyPass />} />
+          <Route path="/print/goshwara/:id" element={<PrintGoshwara />} />
+
+          {/* App routes */}
+          <Route path="/" element={<AdminLayout />}>
+            <Route index element={<Dashboard />} />
+            <Route path="staff" element={<StaffManagement />} />
+            <Route path="bandobast/new" element={<NewBandobast />} />
+            <Route path="bandobast/edit/:id" element={<NewBandobast />} />
+            <Route path="bandobast/:id" element={<BandobastDetail />} />
           </Route>
         </Routes>
       </BrowserRouter>
