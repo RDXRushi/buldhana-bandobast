@@ -10,7 +10,7 @@ export default function PrintDutyPass() {
 
   useEffect(() => {
     api.get(`/bandobasts/${bid}`).then((r) => setB(r.data));
-    api.get(`/staff/${sid}`).then((r) => setS(r.data));
+    api.get(`/bandobasts/${bid}/staff/${sid}`).then((r) => setS(r.data)).catch(() => setS(null));
   }, [bid, sid]);
 
   if (!b || !s) return <div className="p-8">Loading...</div>;

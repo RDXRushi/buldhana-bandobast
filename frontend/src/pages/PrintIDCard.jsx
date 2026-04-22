@@ -1,14 +1,30 @@
 import React, { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { Shield, Printer } from "lucide-react";
 
 export default function PrintIDCard() {
   const { staffId } = useParams();
+  const [params] = useSearchParams();
+  const bid = params.get("bid");
   const [s, setS] = useState(null);
+
   useEffect(() => {
-    api.get(`/staff/${staffId}`).then((r) => setS(r.data));
-  }, [staffId]);
+    const load = async () => {
+      try {
+        if (bid) {
+          const { data } = await api.get(`/bandobasts/${bid}/staff/${staffId}`);
+          setS(data);
+        } else {
+          const { data } = await api.get(`/staff/${staffId}`);
+          setS(data);
+        }
+      } catch {
+        setS(null);
+      }
+    };
+    load();
+  }, [staffId, bid]);
 
   if (!s) return <div className="p-8">Loading...</div>;
 

@@ -12,7 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "../components/ui/table";
-import { ChevronLeft, Download, Printer, QrCode, MapPin, IdCard, FileBarChart, Send, Pencil } from "lucide-react";
+import { ChevronLeft, Download, Printer, QrCode, MapPin, IdCard, FileBarChart, Send, Pencil, Files } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -77,6 +77,27 @@ export default function BandobastDetail() {
               <Printer className="w-4 h-4 mr-2" /> Print Goshwara
             </Button>
             <Button
+              variant="outline"
+              onClick={() => window.open(`/print/bulk/id-cards/${id}`, "_blank")}
+              data-testid="bulk-id-cards-btn"
+            >
+              <Files className="w-4 h-4 mr-2" /> All ID Cards
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => window.open(`/print/bulk/duty-passes/${id}`, "_blank")}
+              data-testid="bulk-duty-passes-btn"
+            >
+              <Files className="w-4 h-4 mr-2" /> All Duty Passes
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => window.open(`${process.env.REACT_APP_BACKEND_URL}/api/bandobasts/${id}/export/staff-wise`, "_blank")}
+              data-testid="export-staff-wise-btn"
+            >
+              <Download className="w-4 h-4 mr-2" /> Excel Roster
+            </Button>
+            <Button
               className="bg-[#FF9933] hover:bg-[#E68A2E] text-white"
               onClick={deploy}
               disabled={b.status === "deployed"}
@@ -130,7 +151,7 @@ export default function BandobastDetail() {
                   <TableHead>Bakkal</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Mobile</TableHead>
-                  <TableHead>Duty Pass</TableHead>
+                  <TableHead>Duty Pass / ID</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -145,9 +166,14 @@ export default function BandobastDetail() {
                     <TableCell className="font-medium">{s.name}</TableCell>
                     <TableCell className="font-mono text-xs">{s.mobile || "-"}</TableCell>
                     <TableCell>
-                      <Link to={`/print/duty-pass/${id}/${p.id}/${s.id}`} className="text-sm text-[#2E3192] hover:underline inline-flex items-center gap-1">
-                        <IdCard className="w-3 h-3" /> Pass
-                      </Link>
+                      <div className="flex gap-2">
+                        <Link to={`/print/duty-pass/${id}/${p.id}/${s.id}`} className="text-xs text-[#2E3192] hover:underline inline-flex items-center gap-1" data-testid={`pass-${s.id}`}>
+                          <IdCard className="w-3 h-3" /> Pass
+                        </Link>
+                        <Link to={`/print/id-card/${s.id}?bid=${id}`} className="text-xs text-[#FF9933] hover:underline inline-flex items-center gap-1" data-testid={`idcard-${s.id}`}>
+                          <IdCard className="w-3 h-3" /> ID
+                        </Link>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

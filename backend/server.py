@@ -102,6 +102,8 @@ class Bandobast(BaseModel):
     spot: str = ""
     ps_name: str = ""
     in_charge: str = ""
+    has_other_district: bool = False
+    other_district_staff: List[dict] = []
     points: List[BandobastPoint] = []
     selected_staff_ids: List[str] = []
     allotments: dict = {}  # point_id -> [staff_id,...]
@@ -116,6 +118,7 @@ class BandobastCreate(BaseModel):
     spot: Optional[str] = ""
     ps_name: Optional[str] = ""
     in_charge: Optional[str] = ""
+    has_other_district: Optional[bool] = False
 
 
 class BandobastUpdate(BaseModel):
@@ -125,6 +128,7 @@ class BandobastUpdate(BaseModel):
     spot: Optional[str] = None
     ps_name: Optional[str] = None
     in_charge: Optional[str] = None
+    has_other_district: Optional[bool] = None
 
 
 # ========================= STAFF ENDPOINTS =========================
@@ -240,15 +244,19 @@ async def import_staff(staff_type: StaffType, file: UploadFile = File(...)):
         if r not in headers:
             raise HTTPException(status_code=400, detail=f"Missing required column: {r}")
     inserted = 0
-    skipped = 0
+    skipped_duplicate = 0
+    skipped_missing = 0
     errors = []
     for i, row in enumerate(rows[1:], start=2):
         data = {headers[j]: (str(v).strip() if v is not None else "") for j, v in enumerate(row) if j < len(headers)}
         if not data.get("bakkal_no") or not data.get("name") or not data.get("rank"):
+            # Skip fully empty rows silently; count rows missing required fields
+            if any((data.get("bakkal_no"), data.get("name"), data.get("rank"), data.get("posting"), data.get("mobile"))):
+                skipped_missing += 1
             continue
         existing = await db.staff.find_one({"bakkal_no": data["bakkal_no"], "staff_type": staff_type}, {"_id": 0})
         if existing:
-            skipped += 1
+            skipped_duplicate += 1
             continue
         try:
             obj = Staff(
@@ -266,7 +274,13 @@ async def import_staff(staff_type: StaffType, file: UploadFile = File(...)):
             inserted += 1
         except Exception as e:
             errors.append({"row": i, "error": str(e)})
-    return {"inserted": inserted, "skipped": skipped, "errors": errors}
+    return {
+        "inserted": inserted,
+        "skipped_duplicate": skipped_duplicate,
+        "skipped_missing": skipped_missing,
+        "errors": errors,
+        "total_rows": len(rows) - 1,
+    }
 
 
 # ========================= BANDOBAST ENDPOINTS =========================
@@ -393,6 +407,131 @@ async def import_points(bid: str, file: UploadFile = File(...)):
         except Exception as e:
             errors.append({"row": i, "error": str(e)})
     return {"inserted": inserted, "errors": errors}
+
+
+@api_router.get("/bandobasts/{bid}/staff/{sid}")
+async def get_any_staff(bid: str, sid: str):
+    """Resolve a staff ID either from global staff or bandobast's out-district list."""
+    bandobast = await db.bandobasts.find_one({"id": bid}, {"_id": 0})
+    if not bandobast:
+        raise HTTPException(status_code=404, detail="Bandobast not found")
+    for s in bandobast.get("other_district_staff", []):
+        if s.get("id") == sid:
+            return s
+    item = await db.staff.find_one({"id": sid}, {"_id": 0})
+    if not item:
+        raise HTTPException(status_code=404, detail="Staff not found")
+    return item
+
+
+# ---- Out of District Staff (scoped to bandobast only) ----
+@api_router.post("/bandobasts/{bid}/out-staff/import/{staff_type}")
+async def import_out_staff(bid: str, staff_type: StaffType, file: UploadFile = File(...)):
+    bandobast = await db.bandobasts.find_one({"id": bid}, {"_id": 0})
+    if not bandobast:
+        raise HTTPException(status_code=404, detail="Bandobast not found")
+    content = await file.read()
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid Excel file: {e}")
+    ws = wb.active
+    rows = list(ws.iter_rows(values_only=True))
+    if len(rows) < 2:
+        return {"inserted": 0, "total_rows": 0}
+    headers = [str(h).strip().lower() if h else "" for h in rows[0]]
+    for r in ("rank", "bakkal_no", "name"):
+        if r not in headers:
+            raise HTTPException(status_code=400, detail=f"Missing required column: {r}")
+    existing_out = bandobast.get("other_district_staff", [])
+    existing_key = {(s.get("bakkal_no"), s.get("staff_type")) for s in existing_out}
+    inserted = 0
+    skipped_missing = 0
+    skipped_duplicate = 0
+    new_rows = []
+    for row in rows[1:]:
+        data = {headers[j]: (str(v).strip() if v is not None else "") for j, v in enumerate(row) if j < len(headers)}
+        if not data.get("bakkal_no") or not data.get("name") or not data.get("rank"):
+            if any((data.get("bakkal_no"), data.get("name"), data.get("rank"))):
+                skipped_missing += 1
+            continue
+        key = (data["bakkal_no"], staff_type)
+        if key in existing_key:
+            skipped_duplicate += 1
+            continue
+        existing_key.add(key)
+        new_rows.append({
+            "id": str(uuid.uuid4()),
+            "staff_type": staff_type,
+            "rank": data.get("rank", ""),
+            "bakkal_no": data.get("bakkal_no", ""),
+            "name": data.get("name", ""),
+            "posting": data.get("posting", ""),
+            "mobile": data.get("mobile", ""),
+            "gender": data.get("gender", "Male") or "Male",
+            "district": data.get("district", "") or "Other",
+            "category": data.get("category", ""),
+            "is_out_district": True,
+        })
+        inserted += 1
+    if new_rows:
+        await db.bandobasts.update_one({"id": bid}, {"$push": {"other_district_staff": {"$each": new_rows}}})
+    return {
+        "inserted": inserted,
+        "skipped_duplicate": skipped_duplicate,
+        "skipped_missing": skipped_missing,
+        "total_rows": len(rows) - 1,
+    }
+
+
+class OutStaffCreate(BaseModel):
+    staff_type: StaffType
+    rank: str
+    bakkal_no: str
+    name: str
+    posting: Optional[str] = ""
+    mobile: Optional[str] = ""
+    gender: Optional[str] = "Male"
+    district: Optional[str] = "Other"
+    category: Optional[str] = ""
+
+
+@api_router.post("/bandobasts/{bid}/out-staff")
+async def add_out_staff(bid: str, payload: OutStaffCreate):
+    bandobast = await db.bandobasts.find_one({"id": bid}, {"_id": 0})
+    if not bandobast:
+        raise HTTPException(status_code=404, detail="Bandobast not found")
+    for s in bandobast.get("other_district_staff", []):
+        if s.get("bakkal_no") == payload.bakkal_no and s.get("staff_type") == payload.staff_type:
+            raise HTTPException(status_code=409, detail="Bakkal No already exists for this bandobast")
+    obj = {
+        "id": str(uuid.uuid4()),
+        **payload.model_dump(),
+        "is_out_district": True,
+    }
+    await db.bandobasts.update_one({"id": bid}, {"$push": {"other_district_staff": obj}})
+    return obj
+
+
+@api_router.delete("/bandobasts/{bid}/out-staff/{sid}")
+async def delete_out_staff(bid: str, sid: str):
+    await db.bandobasts.update_one(
+        {"id": bid},
+        {"$pull": {"other_district_staff": {"id": sid}}},
+    )
+    # Also remove from selected + allotments
+    await db.bandobasts.update_one({"id": bid}, {"$pull": {"selected_staff_ids": sid}})
+    bandobast = await db.bandobasts.find_one({"id": bid}, {"_id": 0})
+    if bandobast:
+        allot = bandobast.get("allotments", {})
+        changed = False
+        for pid, sids in list(allot.items()):
+            if sid in sids:
+                allot[pid] = [x for x in sids if x != sid]
+                changed = True
+        if changed:
+            await db.bandobasts.update_one({"id": bid}, {"$set": {"allotments": allot}})
+    return {"ok": True}
 
 
 # ---- Points ----
@@ -536,8 +675,11 @@ async def goshwara(bid: str):
     if not bandobast:
         raise HTTPException(status_code=404, detail="Not found")
     all_staff_ids = list({sid for sids in bandobast.get("allotments", {}).values() for sid in sids})
-    staff_list = await db.staff.find({"id": {"$in": all_staff_ids}}, {"_id": 0}).to_list(5000)
-    staff_map = {s["id"]: s for s in staff_list}
+    home_staff = await db.staff.find({"id": {"$in": all_staff_ids}}, {"_id": 0}).to_list(5000)
+    out_staff = [s for s in bandobast.get("other_district_staff", []) if s["id"] in set(all_staff_ids)]
+    staff_map = {s["id"]: s for s in home_staff}
+    for s in out_staff:
+        staff_map[s["id"]] = s
     point_wise = []
     for p in bandobast.get("points", []):
         assigned = bandobast.get("allotments", {}).get(p["id"], [])
@@ -568,8 +710,11 @@ async def export_staff_wise(bid: str):
     all_ids = list({sid for sids in bandobast.get("allotments", {}).values() for sid in sids})
     selected_ids = bandobast.get("selected_staff_ids", [])
     combined = list({*selected_ids, *all_ids})
-    staff_list = await db.staff.find({"id": {"$in": combined}}, {"_id": 0}).to_list(5000)
-    staff_map = {s["id"]: s for s in staff_list}
+    home_staff = await db.staff.find({"id": {"$in": combined}}, {"_id": 0}).to_list(5000)
+    out_staff = [s for s in bandobast.get("other_district_staff", []) if s["id"] in set(combined)]
+    staff_map = {s["id"]: s for s in home_staff}
+    for s in out_staff:
+        staff_map[s["id"]] = s
     points = bandobast.get("points", [])
     allot = bandobast.get("allotments", {})
     wb = Workbook()

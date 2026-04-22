@@ -9,6 +9,8 @@ import BandobastDetail from "./pages/BandobastDetail";
 import PrintIDCard from "./pages/PrintIDCard";
 import PrintDutyPass from "./pages/PrintDutyPass";
 import PrintGoshwara from "./pages/PrintGoshwara";
+import PrintBulkIDCards from "./pages/PrintBulkIDCards";
+import PrintBulkDutyPasses from "./pages/PrintBulkDutyPasses";
 import Login from "./pages/Login";
 import LoadingScreen from "./pages/LoadingScreen";
 import RequireAuth from "./components/RequireAuth";
@@ -26,6 +28,8 @@ function App() {
           <Route path="/print/id-card/:staffId" element={<PrintIDCard />} />
           <Route path="/print/duty-pass/:bid/:pid/:sid" element={<PrintDutyPass />} />
           <Route path="/print/goshwara/:id" element={<PrintGoshwara />} />
+          <Route path="/print/bulk/id-cards/:bid" element={<PrintBulkIDCards />} />
+          <Route path="/print/bulk/duty-passes/:bid" element={<PrintBulkDutyPasses />} />
 
           {/* Protected app routes */}
           <Route path="/" element={<RequireAuth><AdminLayout /></RequireAuth>}>

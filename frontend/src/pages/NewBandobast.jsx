@@ -48,8 +48,15 @@ export default function NewBandobast() {
     spot: "",
     ps_name: "",
     in_charge: "",
+    has_other_district: false,
   });
   const [staff, setStaff] = useState([]);
+
+  // Merged staff (home + out-district from this bandobast)
+  const allStaff = React.useMemo(
+    () => [...staff, ...((bandobast && bandobast.other_district_staff) || [])],
+    [staff, bandobast]
+  );
 
   // Load existing
   useEffect(() => {
@@ -64,6 +71,7 @@ export default function NewBandobast() {
           spot: data.spot || "",
           ps_name: data.ps_name || "",
           in_charge: data.in_charge || "",
+          has_other_district: !!data.has_other_district,
         });
         setBid(data.id);
         if (data.points?.length) setStep(1);
@@ -141,13 +149,32 @@ export default function NewBandobast() {
               <Label>{L.inCharge}</Label>
               <Input value={form.in_charge} onChange={(e) => setForm({ ...form, in_charge: e.target.value })} data-testid="bd-incharge" />
             </div>
+            <div className="md:col-span-2 bg-[#FF9933]/5 border border-[#FF9933]/30 rounded-md p-4">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={!!form.has_other_district}
+                  onChange={(e) => setForm({ ...form, has_other_district: e.target.checked })}
+                  className="mt-1 w-4 h-4 accent-[#FF9933]"
+                  data-testid="bd-has-other-district"
+                />
+                <div>
+                  <div className="font-semibold text-sm text-[#0A0A0A]">
+                    Other District Bandobast? / इतर जिल्हा बंदोबस्त आहे का?
+                  </div>
+                  <div className="text-xs text-[#6B7280] mt-0.5">
+                    Check this if staff from other districts will participate. A separate "Out of District" import section will appear in Select Staff step. This data stays within this bandobast only.
+                  </div>
+                </div>
+              </label>
+            </div>
           </div>
         )}
 
         {step === 1 && <PointsStep bandobast={bandobast} bid={bid} onRefresh={refresh} />}
-        {step === 2 && <SelectStaffStep bandobast={bandobast} bid={bid} staff={staff} onRefresh={refresh} />}
-        {step === 3 && <AllotmentStep bandobast={bandobast} bid={bid} staff={staff} onRefresh={refresh} />}
-        {step === 4 && <DeployStep bandobast={bandobast} bid={bid} staff={staff} onRefresh={refresh} navigate={navigate} />}
+        {step === 2 && <SelectStaffStep bandobast={bandobast} bid={bid} staff={staff} allStaff={allStaff} onRefresh={refresh} />}
+        {step === 3 && <AllotmentStep bandobast={bandobast} bid={bid} staff={allStaff} onRefresh={refresh} />}
+        {step === 4 && <DeployStep bandobast={bandobast} bid={bid} staff={allStaff} onRefresh={refresh} navigate={navigate} />}
 
         {/* Footer nav */}
         <div className="mt-8 pt-5 border-t border-[#E5E7EB] flex justify-between">
@@ -372,11 +399,12 @@ function PointsStep({ bandobast, bid, onRefresh }) {
   );
 }
 
-function SelectStaffStep({ bandobast, bid, staff, onRefresh }) {
+function SelectStaffStep({ bandobast, bid, staff, allStaff, onRefresh }) {
   const [selected, setSelected] = useState(new Set(bandobast?.selected_staff_ids || []));
   const [typeFilter, setTypeFilter] = useState("all");
   const [rankFilter, setRankFilter] = useState("all");
   const [saving, setSaving] = useState(false);
+  const outFileRef = React.useRef({});
 
   useEffect(() => {
     setSelected(new Set(bandobast?.selected_staff_ids || []));
@@ -393,9 +421,10 @@ function SelectStaffStep({ bandobast, bid, staff, onRefresh }) {
     { officer: 0, amaldar: 0, home_guard: 0 }
   );
 
-  const selectedByType = (type) => [...selected].filter((id) => staff.find((s) => s.id === id)?.staff_type === type).length;
+  const pool = allStaff || staff;
+  const selectedByType = (type) => [...selected].filter((id) => pool.find((s) => s.id === id)?.staff_type === type).length;
 
-  const filtered = staff.filter((s) => {
+  const homeFiltered = staff.filter((s) => {
     if (typeFilter !== "all" && s.staff_type !== typeFilter) return false;
     if (rankFilter !== "all" && s.rank !== rankFilter) return false;
     return true;
@@ -407,12 +436,64 @@ function SelectStaffStep({ bandobast, bid, staff, onRefresh }) {
     setSelected(n);
   };
 
+  const selectAllHome = () => {
+    const n = new Set(selected);
+    for (const s of homeFiltered) n.add(s.id);
+    setSelected(n);
+  };
+  const clearAllHome = () => {
+    const n = new Set(selected);
+    for (const s of homeFiltered) n.delete(s.id);
+    setSelected(n);
+  };
+
   const save = async () => {
     setSaving(true);
     await api.put(`/bandobasts/${bid}/selected-staff`, { staff_ids: [...selected] });
     toast.success("Selection saved");
     onRefresh();
     setSaving(false);
+  };
+
+  // Out-of-district helpers
+  const outStaff = bandobast?.other_district_staff || [];
+  const downloadOutTemplate = (type) => {
+    window.open(`${BACKEND_URL}/api/staff-template/${type}`, "_blank");
+  };
+  const handleOutImport = async (type, e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const fd = new FormData();
+    fd.append("file", file);
+    try {
+      const { data } = await api.post(`/bandobasts/${bid}/out-staff/import/${type}`, fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      const parts = [`Imported ${data.inserted}`];
+      if (data.skipped_duplicate) parts.push(`${data.skipped_duplicate} duplicates`);
+      if (data.skipped_missing) parts.push(`${data.skipped_missing} missing fields`);
+      toast.success(parts.join(" · "));
+      onRefresh();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Import failed");
+    }
+    e.target.value = "";
+  };
+  const removeOut = async (sid) => {
+    if (!window.confirm("Remove this staff from this bandobast?")) return;
+    await api.delete(`/bandobasts/${bid}/out-staff/${sid}`);
+    setSelected((prev) => { const n = new Set(prev); n.delete(sid); return n; });
+    onRefresh();
+  };
+  const selectAllOut = () => {
+    const n = new Set(selected);
+    for (const s of outStaff) n.add(s.id);
+    setSelected(n);
+  };
+  const clearAllOut = () => {
+    const n = new Set(selected);
+    for (const s of outStaff) n.delete(s.id);
+    setSelected(n);
   };
 
   return (
@@ -450,6 +531,8 @@ function SelectStaffStep({ bandobast, bid, staff, onRefresh }) {
             ))}
           </SelectContent>
         </Select>
+        <Button variant="outline" size="sm" onClick={selectAllHome} data-testid="select-all-home">Select All (filtered)</Button>
+        <Button variant="outline" size="sm" onClick={clearAllHome} data-testid="clear-all-home">Clear</Button>
         <div className="ml-auto">
           <Button className="bg-[#138808] hover:bg-[#0E6306] text-white" onClick={save} disabled={saving} data-testid="save-selection-btn">
             <Save className="w-4 h-4 mr-2" /> Save Selection
@@ -457,7 +540,7 @@ function SelectStaffStep({ bandobast, bid, staff, onRefresh }) {
         </div>
       </div>
 
-      <div className="max-h-[500px] overflow-auto border border-[#E5E7EB] rounded-md">
+      <div className="max-h-[420px] overflow-auto border border-[#E5E7EB] rounded-md">
         <Table>
           <TableHeader className="bg-[#F9FAFB] sticky top-0">
             <TableRow>
@@ -471,7 +554,7 @@ function SelectStaffStep({ bandobast, bid, staff, onRefresh }) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtered.map((s) => (
+            {homeFiltered.map((s) => (
               <TableRow key={s.id} className={selected.has(s.id) ? "bg-[#2E3192]/5" : ""}>
                 <TableCell>
                   <Checkbox checked={selected.has(s.id)} onCheckedChange={() => toggle(s.id)} data-testid={`select-${s.id}`} />
@@ -487,6 +570,97 @@ function SelectStaffStep({ bandobast, bid, staff, onRefresh }) {
           </TableBody>
         </Table>
       </div>
+
+      {/* Out of District Bandobast section */}
+      {bandobast?.has_other_district && (
+        <div className="mt-8 border-2 border-dashed border-[#FF9933] rounded-md p-4 bg-[#FF9933]/5" data-testid="out-district-section">
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <div>
+              <h3 className="font-display font-bold text-lg text-[#B36B22]">
+                Out of District Bandobast / इतर जिल्हा बंदोबस्त
+              </h3>
+              <p className="text-xs text-[#6B7280]">Specific to this bandobast only — does not modify your home district Staff Management.</p>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={selectAllOut} data-testid="select-all-out">Select All</Button>
+              <Button variant="outline" size="sm" onClick={clearAllOut} data-testid="clear-all-out">Clear</Button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+            {["officer", "amaldar", "home_guard"].map((type) => (
+              <div key={type} className="bg-white border border-[#E5E7EB] rounded-md p-3">
+                <div className="text-xs font-bold uppercase tracking-wider text-[#6B7280] mb-2">
+                  {STAFF_TYPE_LABELS[type].en}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" size="sm" onClick={() => downloadOutTemplate(type)} data-testid={`out-tmpl-${type}`}>
+                    <Download className="w-3 h-3 mr-1" /> Template
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => outFileRef.current[type]?.click()} data-testid={`out-import-${type}`}>
+                    <Upload className="w-3 h-3 mr-1" /> Import
+                  </Button>
+                  <input
+                    type="file"
+                    accept=".xlsx"
+                    className="hidden"
+                    ref={(r) => (outFileRef.current[type] = r)}
+                    onChange={(e) => handleOutImport(type, e)}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="max-h-[360px] overflow-auto border border-[#E5E7EB] rounded-md bg-white">
+            <Table>
+              <TableHeader className="bg-[#F9FAFB] sticky top-0">
+                <TableRow>
+                  <TableHead className="w-12"></TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Rank</TableHead>
+                  <TableHead>Bakkal</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Posting</TableHead>
+                  <TableHead>Mobile</TableHead>
+                  <TableHead>Gender</TableHead>
+                  <TableHead>District</TableHead>
+                  <TableHead></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {outStaff.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={10} className="text-center text-sm text-[#6B7280] py-6">
+                      No out-of-district staff yet. Use the Import buttons above.
+                    </TableCell>
+                  </TableRow>
+                )}
+                {outStaff.map((s) => (
+                  <TableRow key={s.id} className={selected.has(s.id) ? "bg-[#FF9933]/5" : ""}>
+                    <TableCell>
+                      <Checkbox checked={selected.has(s.id)} onCheckedChange={() => toggle(s.id)} data-testid={`out-select-${s.id}`} />
+                    </TableCell>
+                    <TableCell><Badge className="bg-[#FF9933]/15 text-[#B36B22]">{STAFF_TYPE_LABELS[s.staff_type].en}</Badge></TableCell>
+                    <TableCell className="font-semibold">{s.rank}</TableCell>
+                    <TableCell className="font-mono">{s.bakkal_no}</TableCell>
+                    <TableCell>{s.name}</TableCell>
+                    <TableCell>{s.posting || "-"}</TableCell>
+                    <TableCell className="font-mono text-xs">{s.mobile || "-"}</TableCell>
+                    <TableCell>{s.gender}</TableCell>
+                    <TableCell>{s.district}</TableCell>
+                    <TableCell>
+                      <button className="p-1.5 text-[#DC2626] hover:bg-[#FEE2E2] rounded" onClick={() => removeOut(s.id)} data-testid={`out-remove-${s.id}`}>
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

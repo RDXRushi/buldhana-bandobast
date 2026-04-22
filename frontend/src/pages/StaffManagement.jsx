@@ -88,7 +88,11 @@ export default function StaffManagement() {
       const { data } = await api.post(`/staff/import/${activeType}`, fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      toast.success(`Imported ${data.inserted}, skipped ${data.skipped}`);
+      const parts = [`Imported ${data.inserted}`];
+      if (data.skipped_duplicate) parts.push(`${data.skipped_duplicate} duplicates skipped`);
+      if (data.skipped_missing) parts.push(`${data.skipped_missing} rows missing fields`);
+      if (data.errors && data.errors.length) parts.push(`${data.errors.length} errors`);
+      toast.success(parts.join(" · "));
       load();
     } catch (err) {
       toast.error(err.response?.data?.detail || "Import failed");
