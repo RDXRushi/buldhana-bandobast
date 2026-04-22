@@ -9,19 +9,26 @@ import BandobastDetail from "./pages/BandobastDetail";
 import PrintIDCard from "./pages/PrintIDCard";
 import PrintDutyPass from "./pages/PrintDutyPass";
 import PrintGoshwara from "./pages/PrintGoshwara";
+import Login from "./pages/Login";
+import LoadingScreen from "./pages/LoadingScreen";
+import RequireAuth from "./components/RequireAuth";
 
 function App() {
   return (
     <div className="App">
       <BrowserRouter>
         <Routes>
+          {/* Auth routes */}
+          <Route path="/login" element={<Login />} />
+          <Route path="/loading" element={<RequireAuth><LoadingScreen /></RequireAuth>} />
+
           {/* Print routes (no layout) */}
           <Route path="/print/id-card/:staffId" element={<PrintIDCard />} />
           <Route path="/print/duty-pass/:bid/:pid/:sid" element={<PrintDutyPass />} />
           <Route path="/print/goshwara/:id" element={<PrintGoshwara />} />
 
-          {/* App routes */}
-          <Route path="/" element={<AdminLayout />}>
+          {/* Protected app routes */}
+          <Route path="/" element={<RequireAuth><AdminLayout /></RequireAuth>}>
             <Route index element={<Dashboard />} />
             <Route path="staff" element={<StaffManagement />} />
             <Route path="bandobast/new" element={<NewBandobast />} />

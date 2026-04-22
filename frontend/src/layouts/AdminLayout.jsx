@@ -96,7 +96,13 @@ export default function AdminLayout() {
               <DropdownMenuItem data-testid="profile-menu-profile">
                 <UserCircle2 className="w-4 h-4 mr-2" /> {L.profile}
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => navigate("/")} data-testid="profile-menu-logout">
+              <DropdownMenuItem
+                onSelect={() => {
+                  localStorage.removeItem("bdpol_auth");
+                  navigate("/login", { replace: true });
+                }}
+                data-testid="profile-menu-logout"
+              >
                 <LogOut className="w-4 h-4 mr-2" /> Sign out
               </DropdownMenuItem>
             </DropdownMenuContent>
