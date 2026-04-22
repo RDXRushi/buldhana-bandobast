@@ -42,7 +42,7 @@ class Staff(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     staff_type: StaffType
     rank: str
-    bakkal_no: str
+    bakkal_no: str = ""  # optional for officers
     name: str
     posting: str = ""
     mobile: str = ""
@@ -56,7 +56,7 @@ class Staff(BaseModel):
 class StaffCreate(BaseModel):
     staff_type: StaffType
     rank: str
-    bakkal_no: str
+    bakkal_no: Optional[str] = ""
     name: str
     posting: Optional[str] = ""
     mobile: Optional[str] = ""
@@ -149,6 +149,7 @@ async def list_staff(staff_type: Optional[StaffType] = None, rank: Optional[str]
         query["$or"] = [
             {"name": {"$regex": search, "$options": "i"}},
             {"bakkal_no": {"$regex": search, "$options": "i"}},
+            {"mobile": {"$regex": search, "$options": "i"}},
         ]
     items = await db.staff.find(query, {"_id": 0}).sort("created_at", -1).to_list(5000)
     return items
@@ -156,10 +157,23 @@ async def list_staff(staff_type: Optional[StaffType] = None, rank: Optional[str]
 
 @api_router.post("/staff", response_model=Staff)
 async def create_staff(payload: StaffCreate):
-    # check duplicate bakkal for same type
-    existing = await db.staff.find_one({"bakkal_no": payload.bakkal_no, "staff_type": payload.staff_type}, {"_id": 0})
-    if existing:
-        raise HTTPException(status_code=409, detail="Staff with this Bakkal No already exists")
+    # Duplicate check: officers use (name + mobile); others use bakkal_no
+    if payload.staff_type == "officer":
+        existing = await db.staff.find_one(
+            {"staff_type": "officer", "name": payload.name, "mobile": payload.mobile or ""},
+            {"_id": 0},
+        )
+        if existing:
+            raise HTTPException(status_code=409, detail="Officer with this Name + Mobile already exists")
+    else:
+        if not payload.bakkal_no:
+            raise HTTPException(status_code=400, detail="Bakkal No is required for this staff type")
+        existing = await db.staff.find_one(
+            {"bakkal_no": payload.bakkal_no, "staff_type": payload.staff_type},
+            {"_id": 0},
+        )
+        if existing:
+            raise HTTPException(status_code=409, detail="Staff with this Bakkal No already exists")
     obj = Staff(**payload.model_dump())
     await db.staff.insert_one(obj.model_dump())
     return obj
@@ -207,15 +221,15 @@ async def staff_template(staff_type: StaffType):
     wb = Workbook()
     ws = wb.active
     ws.title = staff_type.upper()
-    headers = ["rank", "bakkal_no", "name", "posting", "mobile", "gender", "district", "category"]
-    ws.append(headers)
-    # example row
-    example_rank = {
-        "officer": "PI",
-        "amaldar": "HC",
-        "home_guard": "Home Guard",
-    }[staff_type]
-    ws.append([example_rank, "12345", "Example Name", "PS Buldhana", "9999999999", "Male", "Buldhana", "Open"])
+    if staff_type == "officer":
+        headers = ["rank", "name", "posting", "mobile", "gender", "district", "category"]
+        ws.append(headers)
+        ws.append(["PI", "Example Officer", "PS Buldhana", "9999999999", "Male", "Buldhana", "Open"])
+    else:
+        headers = ["rank", "bakkal_no", "name", "posting", "mobile", "gender", "district", "category"]
+        ws.append(headers)
+        example_rank = "HC" if staff_type == "amaldar" else "Home Guard"
+        ws.append([example_rank, "12345", "Example Name", "PS Buldhana", "9999999999", "Male", "Buldhana", "Open"])
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -237,9 +251,10 @@ async def import_staff(staff_type: StaffType, file: UploadFile = File(...)):
     ws = wb.active
     rows = list(ws.iter_rows(values_only=True))
     if len(rows) < 2:
-        return {"inserted": 0, "skipped": 0, "errors": []}
+        return {"inserted": 0, "skipped_duplicate": 0, "skipped_missing": 0, "total_rows": 0, "errors": []}
     headers = [str(h).strip().lower() if h else "" for h in rows[0]]
-    required = ["rank", "bakkal_no", "name"]
+    is_officer = staff_type == "officer"
+    required = ["rank", "name"] if is_officer else ["rank", "bakkal_no", "name"]
     for r in required:
         if r not in headers:
             raise HTTPException(status_code=400, detail=f"Missing required column: {r}")
@@ -249,12 +264,27 @@ async def import_staff(staff_type: StaffType, file: UploadFile = File(...)):
     errors = []
     for i, row in enumerate(rows[1:], start=2):
         data = {headers[j]: (str(v).strip() if v is not None else "") for j, v in enumerate(row) if j < len(headers)}
-        if not data.get("bakkal_no") or not data.get("name") or not data.get("rank"):
-            # Skip fully empty rows silently; count rows missing required fields
-            if any((data.get("bakkal_no"), data.get("name"), data.get("rank"), data.get("posting"), data.get("mobile"))):
+        missing = False
+        if is_officer:
+            if not data.get("name") or not data.get("rank"):
+                missing = True
+        else:
+            if not data.get("bakkal_no") or not data.get("name") or not data.get("rank"):
+                missing = True
+        if missing:
+            if any(data.values()):
                 skipped_missing += 1
             continue
-        existing = await db.staff.find_one({"bakkal_no": data["bakkal_no"], "staff_type": staff_type}, {"_id": 0})
+        if is_officer:
+            existing = await db.staff.find_one(
+                {"staff_type": "officer", "name": data.get("name"), "mobile": data.get("mobile", "")},
+                {"_id": 0},
+            )
+        else:
+            existing = await db.staff.find_one(
+                {"bakkal_no": data["bakkal_no"], "staff_type": staff_type},
+                {"_id": 0},
+            )
         if existing:
             skipped_duplicate += 1
             continue
@@ -262,7 +292,7 @@ async def import_staff(staff_type: StaffType, file: UploadFile = File(...)):
             obj = Staff(
                 staff_type=staff_type,
                 rank=data.get("rank", ""),
-                bakkal_no=data.get("bakkal_no", ""),
+                bakkal_no=data.get("bakkal_no", "") if not is_officer else "",
                 name=data.get("name", ""),
                 posting=data.get("posting", ""),
                 mobile=data.get("mobile", ""),
@@ -440,31 +470,45 @@ async def import_out_staff(bid: str, staff_type: StaffType, file: UploadFile = F
     if len(rows) < 2:
         return {"inserted": 0, "total_rows": 0}
     headers = [str(h).strip().lower() if h else "" for h in rows[0]]
-    for r in ("rank", "bakkal_no", "name"):
+    is_officer = staff_type == "officer"
+    required = ["rank", "name"] if is_officer else ["rank", "bakkal_no", "name"]
+    for r in required:
         if r not in headers:
             raise HTTPException(status_code=400, detail=f"Missing required column: {r}")
     existing_out = bandobast.get("other_district_staff", [])
-    existing_key = {(s.get("bakkal_no"), s.get("staff_type")) for s in existing_out}
+    existing_bakkal = {(s.get("bakkal_no"), s.get("staff_type")) for s in existing_out if s.get("bakkal_no")}
+    existing_off = {(s.get("name"), s.get("mobile") or "") for s in existing_out if s.get("staff_type") == "officer"}
     inserted = 0
     skipped_missing = 0
     skipped_duplicate = 0
     new_rows = []
     for row in rows[1:]:
         data = {headers[j]: (str(v).strip() if v is not None else "") for j, v in enumerate(row) if j < len(headers)}
-        if not data.get("bakkal_no") or not data.get("name") or not data.get("rank"):
-            if any((data.get("bakkal_no"), data.get("name"), data.get("rank"))):
-                skipped_missing += 1
-            continue
-        key = (data["bakkal_no"], staff_type)
-        if key in existing_key:
-            skipped_duplicate += 1
-            continue
-        existing_key.add(key)
+        if is_officer:
+            if not data.get("name") or not data.get("rank"):
+                if any(data.values()):
+                    skipped_missing += 1
+                continue
+            key = (data.get("name"), data.get("mobile", ""))
+            if key in existing_off:
+                skipped_duplicate += 1
+                continue
+            existing_off.add(key)
+        else:
+            if not data.get("bakkal_no") or not data.get("name") or not data.get("rank"):
+                if any(data.values()):
+                    skipped_missing += 1
+                continue
+            key = (data["bakkal_no"], staff_type)
+            if key in existing_bakkal:
+                skipped_duplicate += 1
+                continue
+            existing_bakkal.add(key)
         new_rows.append({
             "id": str(uuid.uuid4()),
             "staff_type": staff_type,
             "rank": data.get("rank", ""),
-            "bakkal_no": data.get("bakkal_no", ""),
+            "bakkal_no": data.get("bakkal_no", "") if not is_officer else "",
             "name": data.get("name", ""),
             "posting": data.get("posting", ""),
             "mobile": data.get("mobile", ""),
@@ -501,16 +545,51 @@ async def add_out_staff(bid: str, payload: OutStaffCreate):
     bandobast = await db.bandobasts.find_one({"id": bid}, {"_id": 0})
     if not bandobast:
         raise HTTPException(status_code=404, detail="Bandobast not found")
-    for s in bandobast.get("other_district_staff", []):
-        if s.get("bakkal_no") == payload.bakkal_no and s.get("staff_type") == payload.staff_type:
-            raise HTTPException(status_code=409, detail="Bakkal No already exists for this bandobast")
+    existing_list = bandobast.get("other_district_staff", [])
+    if payload.staff_type == "officer":
+        for s in existing_list:
+            if s.get("staff_type") == "officer" and s.get("name") == payload.name and (s.get("mobile") or "") == (payload.mobile or ""):
+                raise HTTPException(status_code=409, detail="Officer with this Name + Mobile already exists")
+    else:
+        if not payload.bakkal_no:
+            raise HTTPException(status_code=400, detail="Bakkal No is required for this staff type")
+        for s in existing_list:
+            if s.get("bakkal_no") == payload.bakkal_no and s.get("staff_type") == payload.staff_type:
+                raise HTTPException(status_code=409, detail="Bakkal No already exists for this bandobast")
     obj = {
         "id": str(uuid.uuid4()),
         **payload.model_dump(),
+        "bakkal_no": payload.bakkal_no if payload.staff_type != "officer" else "",
         "is_out_district": True,
     }
     await db.bandobasts.update_one({"id": bid}, {"$push": {"other_district_staff": obj}})
     return obj
+
+
+class OutStaffUpdate(BaseModel):
+    rank: Optional[str] = None
+    bakkal_no: Optional[str] = None
+    name: Optional[str] = None
+    posting: Optional[str] = None
+    mobile: Optional[str] = None
+    gender: Optional[str] = None
+    district: Optional[str] = None
+    category: Optional[str] = None
+
+
+@api_router.patch("/bandobasts/{bid}/out-staff/{sid}")
+async def update_out_staff(bid: str, sid: str, payload: OutStaffUpdate):
+    update = {k: v for k, v in payload.model_dump().items() if v is not None}
+    if not update:
+        return {"ok": True}
+    set_ops = {f"other_district_staff.$.{k}": v for k, v in update.items()}
+    res = await db.bandobasts.update_one(
+        {"id": bid, "other_district_staff.id": sid},
+        {"$set": set_ops},
+    )
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Not found")
+    return {"ok": True}
 
 
 @api_router.delete("/bandobasts/{bid}/out-staff/{sid}")

@@ -24,7 +24,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
-import { Plus, Trash2, ChevronLeft, ChevronRight, MapPin, Save, Send, Users, Shield, Upload, Download } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../components/ui/dialog";
+import { Plus, Trash2, ChevronLeft, ChevronRight, MapPin, Save, Send, Users, Shield, Upload, Download, Pencil } from "lucide-react";
 import { toast } from "sonner";
 
 const STEPS = [
@@ -404,6 +411,7 @@ function SelectStaffStep({ bandobast, bid, staff, allStaff, onRefresh }) {
   const [typeFilter, setTypeFilter] = useState("all");
   const [rankFilter, setRankFilter] = useState("all");
   const [saving, setSaving] = useState(false);
+  const [odModal, setOdModal] = useState(null); // { mode: 'add'|'edit', data?}
   const outFileRef = React.useRef({});
 
   useEffect(() => {
@@ -582,6 +590,9 @@ function SelectStaffStep({ bandobast, bid, staff, allStaff, onRefresh }) {
               <p className="text-xs text-[#6B7280]">Specific to this bandobast only — does not modify your home district Staff Management.</p>
             </div>
             <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setOdModal({ mode: "add" })} data-testid="od-add-btn">
+                <Plus className="w-3 h-3 mr-1" /> Add Staff
+              </Button>
               <Button variant="outline" size="sm" onClick={selectAllOut} data-testid="select-all-out">Select All</Button>
               <Button variant="outline" size="sm" onClick={clearAllOut} data-testid="clear-all-out">Clear</Button>
             </div>
@@ -625,14 +636,14 @@ function SelectStaffStep({ bandobast, bid, staff, allStaff, onRefresh }) {
                   <TableHead>Mobile</TableHead>
                   <TableHead>Gender</TableHead>
                   <TableHead>District</TableHead>
-                  <TableHead></TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {outStaff.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={10} className="text-center text-sm text-[#6B7280] py-6">
-                      No out-of-district staff yet. Use the Import buttons above.
+                      No out-of-district staff yet. Use Import or Add Staff above.
                     </TableCell>
                   </TableRow>
                 )}
@@ -643,16 +654,21 @@ function SelectStaffStep({ bandobast, bid, staff, allStaff, onRefresh }) {
                     </TableCell>
                     <TableCell><Badge className="bg-[#FF9933]/15 text-[#B36B22]">{STAFF_TYPE_LABELS[s.staff_type].en}</Badge></TableCell>
                     <TableCell className="font-semibold">{s.rank}</TableCell>
-                    <TableCell className="font-mono">{s.bakkal_no}</TableCell>
+                    <TableCell className="font-mono">{s.staff_type === "officer" ? "—" : (s.bakkal_no || "-")}</TableCell>
                     <TableCell>{s.name}</TableCell>
                     <TableCell>{s.posting || "-"}</TableCell>
                     <TableCell className="font-mono text-xs">{s.mobile || "-"}</TableCell>
                     <TableCell>{s.gender}</TableCell>
                     <TableCell>{s.district}</TableCell>
-                    <TableCell>
-                      <button className="p-1.5 text-[#DC2626] hover:bg-[#FEE2E2] rounded" onClick={() => removeOut(s.id)} data-testid={`out-remove-${s.id}`}>
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                    <TableCell className="text-right">
+                      <div className="inline-flex gap-1">
+                        <button className="p-1.5 text-[#2E3192] hover:bg-[#2E3192]/10 rounded" onClick={() => setOdModal({ mode: "edit", data: s })} data-testid={`out-edit-${s.id}`}>
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button className="p-1.5 text-[#DC2626] hover:bg-[#FEE2E2] rounded" onClick={() => removeOut(s.id)} data-testid={`out-remove-${s.id}`}>
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -661,7 +677,154 @@ function SelectStaffStep({ bandobast, bid, staff, allStaff, onRefresh }) {
           </div>
         </div>
       )}
+
+      {odModal && (
+        <OutDistrictModal
+          open={!!odModal}
+          mode={odModal.mode}
+          data={odModal.data}
+          bid={bid}
+          onClose={() => setOdModal(null)}
+          onSaved={() => { setOdModal(null); onRefresh(); }}
+        />
+      )}
     </div>
+  );
+}
+
+function OutDistrictModal({ open, mode, data, bid, onClose, onSaved }) {
+  const [form, setForm] = useState(
+    data || {
+      staff_type: "officer",
+      rank: RANKS_BY_TYPE.officer[0],
+      bakkal_no: "",
+      name: "",
+      posting: "",
+      mobile: "",
+      gender: "Male",
+      district: "Other",
+      category: "",
+    }
+  );
+  const [saving, setSaving] = useState(false);
+  const isOfficer = form.staff_type === "officer";
+
+  const onTypeChange = (v) => {
+    setForm({ ...form, staff_type: v, rank: RANKS_BY_TYPE[v][0] });
+  };
+
+  const save = async () => {
+    if (!form.rank || !form.name) { toast.error("Rank and Name are required"); return; }
+    if (!isOfficer && !form.bakkal_no) { toast.error("Bakkal No is required"); return; }
+    setSaving(true);
+    try {
+      if (mode === "edit") {
+        await api.patch(`/bandobasts/${bid}/out-staff/${data.id}`, {
+          rank: form.rank,
+          bakkal_no: isOfficer ? "" : (form.bakkal_no || ""),
+          name: form.name,
+          posting: form.posting || "",
+          mobile: form.mobile || "",
+          gender: form.gender,
+          district: form.district,
+          category: form.category || "",
+        });
+        toast.success("Updated");
+      } else {
+        await api.post(`/bandobasts/${bid}/out-staff`, {
+          ...form,
+          bakkal_no: isOfficer ? "" : (form.bakkal_no || ""),
+        });
+        toast.success("Added");
+      }
+      onSaved();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-2xl" data-testid="od-staff-modal">
+        <DialogHeader>
+          <DialogTitle className="font-display">
+            {mode === "edit" ? "Edit" : "Add"} Out-of-District Staff
+          </DialogTitle>
+        </DialogHeader>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <Label>Type*</Label>
+            <Select value={form.staff_type} onValueChange={onTypeChange} disabled={mode === "edit"}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="officer">Officer</SelectItem>
+                <SelectItem value="amaldar">Amaldar</SelectItem>
+                <SelectItem value="home_guard">Home Guard</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>Rank*</Label>
+            <Select value={form.rank} onValueChange={(v) => setForm({ ...form, rank: v })}>
+              <SelectTrigger data-testid="od-form-rank"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {RANKS_BY_TYPE[form.staff_type].map((r) => (
+                  <SelectItem key={r} value={r}>{r}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {!isOfficer && (
+            <div>
+              <Label>Bakkal No*</Label>
+              <Input value={form.bakkal_no} onChange={(e) => setForm({ ...form, bakkal_no: e.target.value })} data-testid="od-form-bakkal" />
+            </div>
+          )}
+          <div className={isOfficer ? "md:col-span-2" : ""}>
+            <Label>Name*</Label>
+            <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-testid="od-form-name" />
+          </div>
+
+          <div>
+            <Label>Posting</Label>
+            <Input value={form.posting} onChange={(e) => setForm({ ...form, posting: e.target.value })} />
+          </div>
+          <div>
+            <Label>Mobile{isOfficer ? "*" : ""}</Label>
+            <Input value={form.mobile} onChange={(e) => setForm({ ...form, mobile: e.target.value })} data-testid="od-form-mobile" />
+          </div>
+
+          <div>
+            <Label>Gender</Label>
+            <Select value={form.gender} onValueChange={(v) => setForm({ ...form, gender: v })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Male">Male</SelectItem>
+                <SelectItem value="Female">Female</SelectItem>
+                <SelectItem value="Other">Other</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>District</Label>
+            <Input value={form.district} onChange={(e) => setForm({ ...form, district: e.target.value })} />
+          </div>
+          <div className="md:col-span-2">
+            <Label>Category</Label>
+            <Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="Open / SC / ST / OBC" />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button className="bg-[#FF9933] hover:bg-[#E68A2E] text-white" onClick={save} disabled={saving} data-testid="od-form-save">
+            {saving ? "Saving..." : "Save"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -670,7 +833,10 @@ function AllotmentStep({ bandobast, bid, staff, onRefresh }) {
   const [activePoint, setActivePoint] = useState(null);
   const [saving, setSaving] = useState(false);
   const [seqDraft, setSeqDraft] = useState({}); // pointId -> string
-  const [filters, setFilters] = useState({ officer: "", amaldar_m: "", amaldar_f: "", home_guard: "" });
+  const [filters, setFilters] = useState({
+    officer: "", amaldar_m: "", amaldar_f: "", home_guard: "",
+    od_officer: "", od_amaldar_m: "", od_amaldar_f: "", od_home_guard: "",
+  });
 
   useEffect(() => {
     setAllot(bandobast?.allotments || {});
@@ -699,24 +865,29 @@ function AllotmentStep({ bandobast, bid, staff, onRefresh }) {
     currentGroup.points.push(p);
   }
 
-  const available = staff.filter((s) => selectedIds.includes(s.id) && !allottedSet.has(s.id));
+  const odIds = new Set((bandobast?.other_district_staff || []).map((s) => s.id));
+  const availableAll = staff.filter((s) => selectedIds.includes(s.id) && !allottedSet.has(s.id));
+  const availableHome = availableAll.filter((s) => !odIds.has(s.id));
+  const availableOut = availableAll.filter((s) => odIds.has(s.id));
 
-  // Partition available staff
-  const partitions = {
-    officer: available.filter((s) => s.staff_type === "officer"),
-    amaldar_m: available.filter((s) => s.staff_type === "amaldar" && s.gender !== "Female"),
-    amaldar_f: available.filter((s) => s.staff_type === "amaldar" && s.gender === "Female"),
-    home_guard: available.filter((s) => s.staff_type === "home_guard"),
-  };
+  const buildPartitions = (list) => ({
+    officer: list.filter((s) => s.staff_type === "officer"),
+    amaldar_m: list.filter((s) => s.staff_type === "amaldar" && s.gender !== "Female"),
+    amaldar_f: list.filter((s) => s.staff_type === "amaldar" && s.gender === "Female"),
+    home_guard: list.filter((s) => s.staff_type === "home_guard"),
+  });
+  const partitions = buildPartitions(availableHome);
+  const outPartitions = buildPartitions(availableOut);
 
   const applyFilter = (list, q) => {
     if (!q) return list;
     const needle = q.toLowerCase().trim();
     return list.filter(
       (s) =>
-        s.bakkal_no?.toLowerCase().includes(needle) ||
-        s.name?.toLowerCase().includes(needle) ||
-        (s.posting || "").toLowerCase().includes(needle)
+        (s.bakkal_no || "").toLowerCase().includes(needle) ||
+        (s.name || "").toLowerCase().includes(needle) ||
+        (s.posting || "").toLowerCase().includes(needle) ||
+        (s.mobile || "").toLowerCase().includes(needle)
     );
   };
 
@@ -868,15 +1039,15 @@ function AllotmentStep({ bandobast, bid, staff, onRefresh }) {
           </div>
         </div>
 
-        {/* Available - 4 partitions */}
+        {/* Available - 4 partitions + OD section */}
         <div className="bg-white border border-[#E5E7EB] rounded-md p-4">
           <div className="flex items-center justify-between mb-3">
             <h4 className="font-bold text-sm uppercase tracking-wider text-[#6B7280]">
-              Available ({available.length})
+              Available — Home District ({availableHome.length})
             </h4>
             {!activePoint && <span className="text-xs text-[#DC2626]">Select a point to allot</span>}
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[680px] overflow-auto">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[380px] overflow-auto">
             {[
               { key: "officer", title: "Officers", color: "#2E3192", data: partitions.officer },
               { key: "amaldar_m", title: "Amaldar (M)", color: "#138808", data: partitions.amaldar_m },
@@ -897,12 +1068,12 @@ function AllotmentStep({ bandobast, bid, staff, onRefresh }) {
                     <input
                       value={filters[part.key]}
                       onChange={(e) => setFilters({ ...filters, [part.key]: e.target.value })}
-                      placeholder="Bakkal / Name / Posting"
+                      placeholder={part.key === "officer" ? "Name / Mobile / Posting" : "Bakkal / Name / Posting"}
                       className="w-full text-xs border border-[#E5E7EB] rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-[#2E3192]"
                       data-testid={`filter-${part.key}`}
                     />
                   </div>
-                  <div className="flex-1 overflow-auto max-h-[260px] space-y-1 p-2">
+                  <div className="flex-1 overflow-auto max-h-[220px] space-y-1 p-2">
                     {filtered.map((s) => (
                       <div
                         key={s.id}
@@ -911,8 +1082,10 @@ function AllotmentStep({ bandobast, bid, staff, onRefresh }) {
                         <div className="min-w-0">
                           <div className="text-xs font-semibold truncate">{s.name}</div>
                           <div className="text-[10px] text-[#6B7280] truncate">
-                            {s.rank} · {s.bakkal_no}
-                            {s.posting && ` · ${s.posting}`}
+                            {s.rank}
+                            {s.staff_type !== "officer" && s.bakkal_no ? ` · ${s.bakkal_no}` : ""}
+                            {s.mobile ? ` · ${s.mobile}` : ""}
+                            {s.posting ? ` · ${s.posting}` : ""}
                           </div>
                         </div>
                         <button
@@ -933,6 +1106,76 @@ function AllotmentStep({ bandobast, bid, staff, onRefresh }) {
               );
             })}
           </div>
+
+          {/* Out of District section */}
+          {bandobast?.has_other_district && (
+            <div className="mt-4 pt-4 border-t-2 border-dashed border-[#FF9933]">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="font-bold text-sm uppercase tracking-wider text-[#B36B22]">
+                  Available — Out of District ({availableOut.length})
+                </h4>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[380px] overflow-auto">
+                {[
+                  { key: "od_officer", title: "OD Officers", color: "#B36B22", data: outPartitions.officer },
+                  { key: "od_amaldar_m", title: "OD Amaldar (M)", color: "#B36B22", data: outPartitions.amaldar_m },
+                  { key: "od_amaldar_f", title: "OD Female Amaldar", color: "#B36B22", data: outPartitions.amaldar_f },
+                  { key: "od_home_guard", title: "OD Home Guards", color: "#B36B22", data: outPartitions.home_guard },
+                ].map((part) => {
+                  const filtered = applyFilter(part.data, filters[part.key]);
+                  return (
+                    <div key={part.key} className="border border-[#FF9933]/50 rounded-md overflow-hidden flex flex-col bg-[#FF9933]/5">
+                      <div
+                        className="px-2.5 py-1.5 flex items-center justify-between border-b border-[#FF9933]/30"
+                        style={{ background: "rgba(255,153,51,0.15)", color: "#B36B22" }}
+                      >
+                        <div className="font-bold text-xs uppercase tracking-wider">{part.title}</div>
+                        <div className="font-mono font-bold text-xs">{filtered.length}/{part.data.length}</div>
+                      </div>
+                      <div className="p-2 border-b border-[#FF9933]/20 bg-white">
+                        <input
+                          value={filters[part.key]}
+                          onChange={(e) => setFilters({ ...filters, [part.key]: e.target.value })}
+                          placeholder={part.key === "od_officer" ? "Name / Mobile / Posting" : "Bakkal / Name / Posting"}
+                          className="w-full text-xs border border-[#E5E7EB] rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-[#FF9933]"
+                          data-testid={`filter-${part.key}`}
+                        />
+                      </div>
+                      <div className="flex-1 overflow-auto max-h-[220px] space-y-1 p-2 bg-white">
+                        {filtered.map((s) => (
+                          <div
+                            key={s.id}
+                            className="flex items-center justify-between p-1.5 border border-[#FF9933]/30 rounded hover:bg-[#FF9933]/5"
+                          >
+                            <div className="min-w-0">
+                              <div className="text-xs font-semibold truncate">{s.name}</div>
+                              <div className="text-[10px] text-[#6B7280] truncate">
+                                {s.rank}
+                                {s.staff_type !== "officer" && s.bakkal_no ? ` · ${s.bakkal_no}` : ""}
+                                {s.mobile ? ` · ${s.mobile}` : ""}
+                                {s.district ? ` · ${s.district}` : ""}
+                              </div>
+                            </div>
+                            <button
+                              className="text-[#B36B22] hover:bg-[#FF9933]/20 rounded p-1 flex-shrink-0"
+                              onClick={() => addToPoint(s.id)}
+                              disabled={!activePoint}
+                              data-testid={`allot-add-${s.id}`}
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                        {filtered.length === 0 && (
+                          <div className="text-[10px] text-[#6B7280] text-center py-3">None</div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Current point allottees */}

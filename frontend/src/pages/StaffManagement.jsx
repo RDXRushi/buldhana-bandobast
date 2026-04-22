@@ -131,7 +131,7 @@ export default function StaffManagement() {
                 <div className="relative flex-1 min-w-[220px]">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9CA3AF]" />
                   <Input
-                    placeholder={`${L.search} by name or Bakkal No`}
+                    placeholder={activeType === "officer" ? `${L.search} by name or mobile` : `${L.search} by name or Bakkal No`}
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && load()}
@@ -169,7 +169,7 @@ export default function StaffManagement() {
                     <TableHead className="w-12">Sr.</TableHead>
                     <TableHead>Photo</TableHead>
                     <TableHead>{L.rank}</TableHead>
-                    <TableHead>{L.bakkalNo}</TableHead>
+                    {activeType !== "officer" && <TableHead>{L.bakkalNo}</TableHead>}
                     <TableHead>{L.name}</TableHead>
                     <TableHead>{L.posting}</TableHead>
                     <TableHead>{L.mobile}</TableHead>
@@ -181,10 +181,10 @@ export default function StaffManagement() {
                 </TableHeader>
                 <TableBody>
                   {loading && (
-                    <TableRow><TableCell colSpan={11} className="text-center py-8 text-[#6B7280]">Loading...</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={activeType === "officer" ? 10 : 11} className="text-center py-8 text-[#6B7280]">Loading...</TableCell></TableRow>
                   )}
                   {!loading && staff.length === 0 && (
-                    <TableRow><TableCell colSpan={11} className="text-center py-8 text-[#6B7280]">No staff yet. Click "Add Staff" to begin.</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={activeType === "officer" ? 10 : 11} className="text-center py-8 text-[#6B7280]">No staff yet. Click "Add Staff" to begin.</TableCell></TableRow>
                   )}
                   {staff.map((s, idx) => (
                     <TableRow key={s.id} data-testid={`staff-row-${s.id}`}>
@@ -199,7 +199,7 @@ export default function StaffManagement() {
                         )}
                       </TableCell>
                       <TableCell><Badge className="bg-[#2E3192]/10 text-[#2E3192] hover:bg-[#2E3192]/20">{s.rank}</Badge></TableCell>
-                      <TableCell className="font-mono font-semibold">{s.bakkal_no}</TableCell>
+                      {activeType !== "officer" && <TableCell className="font-mono font-semibold">{s.bakkal_no}</TableCell>}
                       <TableCell className="font-medium">{s.name}</TableCell>
                       <TableCell>{s.posting || "-"}</TableCell>
                       <TableCell className="font-mono text-xs">{s.mobile || "-"}</TableCell>
@@ -289,8 +289,13 @@ function StaffModal({ open, onClose, staffType, editing, onSaved }) {
   };
 
   const save = async () => {
-    if (!form.bakkal_no || !form.name || !form.rank) {
-      toast.error("Rank, Bakkal No and Name are required");
+    const isOfficer = staffType === "officer";
+    if (!form.rank || !form.name) {
+      toast.error("Rank and Name are required");
+      return;
+    }
+    if (!isOfficer && !form.bakkal_no) {
+      toast.error("Bakkal No is required");
       return;
     }
     setSaving(true);
@@ -299,7 +304,7 @@ function StaffModal({ open, onClose, staffType, editing, onSaved }) {
         await api.patch(`/staff/${editing.id}`, form);
         toast.success("Updated");
       } else {
-        await api.post("/staff", { ...form, staff_type: staffType });
+        await api.post("/staff", { ...form, staff_type: staffType, bakkal_no: isOfficer ? "" : form.bakkal_no });
         toast.success("Added");
       }
       onSaved();
@@ -350,10 +355,12 @@ function StaffModal({ open, onClose, staffType, editing, onSaved }) {
             </Select>
           </div>
 
-          <div>
-            <Label>{L.bakkalNo}*</Label>
-            <Input value={form.bakkal_no} onChange={(e) => setForm({ ...form, bakkal_no: e.target.value })} onBlur={handleBakkalBlur} data-testid="form-bakkal" />
-          </div>
+          {staffType !== "officer" && (
+            <div>
+              <Label>{L.bakkalNo}*</Label>
+              <Input value={form.bakkal_no} onChange={(e) => setForm({ ...form, bakkal_no: e.target.value })} onBlur={handleBakkalBlur} data-testid="form-bakkal" />
+            </div>
+          )}
 
           <div className="md:col-span-2">
             <Label>{L.name}*</Label>
