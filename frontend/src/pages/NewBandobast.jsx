@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { api, EQUIPMENT_OPTIONS, RANKS_BY_TYPE, STAFF_TYPE_LABELS } from "../lib/api";
+import { api, BACKEND_URL, EQUIPMENT_OPTIONS, RANKS_BY_TYPE, STAFF_TYPE_LABELS } from "../lib/api";
 import { L } from "../lib/i18n";
 import Stepper from "../components/Stepper";
 import { Input } from "../components/ui/input";
@@ -24,7 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
-import { Plus, Trash2, ChevronLeft, ChevronRight, MapPin, Save, Send, Users, Shield } from "lucide-react";
+import { Plus, Trash2, ChevronLeft, ChevronRight, MapPin, Save, Send, Users, Shield, Upload, Download } from "lucide-react";
 import { toast } from "sonner";
 
 const STEPS = [
@@ -172,6 +172,7 @@ export default function NewBandobast() {
 function PointsStep({ bandobast, bid, onRefresh }) {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyPoint());
+  const fileRef = React.useRef(null);
   function emptyPoint() {
     return {
       point_name: "",
@@ -217,16 +218,46 @@ function PointsStep({ bandobast, bid, onRefresh }) {
     });
   };
 
+  const downloadTemplate = () => {
+    window.open(`${BACKEND_URL}/api/bandobast-point-template`, "_blank");
+  };
+
+  const handleImport = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const fd = new FormData();
+    fd.append("file", file);
+    try {
+      const { data } = await api.post(`/bandobasts/${bid}/points/import`, fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      toast.success(`Imported ${data.inserted} point(s)`);
+      onRefresh();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Import failed");
+    }
+    e.target.value = "";
+  };
+
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <div>
           <h3 className="font-display font-bold text-xl">Security Points</h3>
           <p className="text-sm text-[#6B7280]">Define all security locations</p>
         </div>
-        <Button className="bg-[#2E3192] hover:bg-[#202266]" onClick={() => setShowForm((s) => !s)} data-testid="add-point-btn">
-          <Plus className="w-4 h-4 mr-2" /> Add Point
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={downloadTemplate} data-testid="point-template-btn">
+            <Download className="w-4 h-4 mr-2" /> Template
+          </Button>
+          <Button variant="outline" onClick={() => fileRef.current?.click()} data-testid="point-import-btn">
+            <Upload className="w-4 h-4 mr-2" /> Import Excel
+          </Button>
+          <input type="file" accept=".xlsx" className="hidden" ref={fileRef} onChange={handleImport} />
+          <Button className="bg-[#2E3192] hover:bg-[#202266]" onClick={() => setShowForm((s) => !s)} data-testid="add-point-btn">
+            <Plus className="w-4 h-4 mr-2" /> Add Point
+          </Button>
+        </div>
       </div>
 
       {showForm && (
@@ -513,23 +544,61 @@ function AllotmentStep({ bandobast, bid, staff, onRefresh }) {
         {/* Points list */}
         <div className="bg-white border border-[#E5E7EB] rounded-md p-4">
           <h4 className="font-bold text-sm uppercase tracking-wider text-[#6B7280] mb-3">Points</h4>
-          <div className="space-y-1">
+          <div className="space-y-2 max-h-[600px] overflow-auto">
             {points.map((p) => {
-              const total = (p.req_officer || 0) + (p.req_amaldar || 0) + (p.req_female_amaldar || 0) + (p.req_home_guard || 0);
+              const reqTotal =
+                (p.req_officer || 0) + (p.req_amaldar || 0) + (p.req_female_amaldar || 0) + (p.req_home_guard || 0);
               const done = (allot[p.id] || []).length;
+              const active = activePoint === p.id;
               return (
                 <button
                   key={p.id}
                   onClick={() => setActivePoint(p.id)}
                   data-testid={`point-tab-${p.id}`}
-                  className={`w-full text-left px-3 py-2 rounded-md border transition ${
-                    activePoint === p.id ? "bg-[#2E3192] text-white border-[#2E3192]" : "border-[#E5E7EB] hover:bg-[#F9FAFB]"
+                  className={`w-full text-left px-3 py-2.5 rounded-md border transition ${
+                    active ? "bg-[#2E3192] text-white border-[#2E3192]" : "border-[#E5E7EB] hover:bg-[#F9FAFB]"
                   }`}
                 >
-                  <div className="font-semibold text-sm">{p.point_name}</div>
-                  <div className={`text-xs ${activePoint === p.id ? "text-white/80" : "text-[#6B7280]"}`}>
-                    {done} / {total} allotted
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="font-semibold text-sm truncate">{p.point_name}</div>
+                    <div className={`text-[10px] font-mono font-bold whitespace-nowrap ${active ? "text-white/90" : "text-[#138808]"}`}>
+                      {done}/{reqTotal}
+                    </div>
                   </div>
+                  {/* Requirement breakdown */}
+                  <div className="mt-1.5 grid grid-cols-2 gap-1 text-[10px]">
+                    <div className={`flex items-center justify-between px-1.5 py-0.5 rounded ${active ? "bg-white/10" : "bg-[#2E3192]/5"}`}>
+                      <span className={active ? "text-white/80" : "text-[#6B7280]"}>Officer</span>
+                      <span className={`font-bold ${active ? "text-white" : "text-[#2E3192]"}`}>{p.req_officer || 0}</span>
+                    </div>
+                    <div className={`flex items-center justify-between px-1.5 py-0.5 rounded ${active ? "bg-white/10" : "bg-[#138808]/5"}`}>
+                      <span className={active ? "text-white/80" : "text-[#6B7280]"}>Amaldar</span>
+                      <span className={`font-bold ${active ? "text-white" : "text-[#138808]"}`}>{p.req_amaldar || 0}</span>
+                    </div>
+                    <div className={`flex items-center justify-between px-1.5 py-0.5 rounded ${active ? "bg-white/10" : "bg-[#FF9933]/10"}`}>
+                      <span className={active ? "text-white/80" : "text-[#6B7280]"}>F. Amaldar</span>
+                      <span className={`font-bold ${active ? "text-white" : "text-[#B36B22]"}`}>{p.req_female_amaldar || 0}</span>
+                    </div>
+                    <div className={`flex items-center justify-between px-1.5 py-0.5 rounded ${active ? "bg-white/10" : "bg-[#2563EB]/5"}`}>
+                      <span className={active ? "text-white/80" : "text-[#6B7280]"}>H. Guard</span>
+                      <span className={`font-bold ${active ? "text-white" : "text-[#2563EB]"}`}>{p.req_home_guard || 0}</span>
+                    </div>
+                  </div>
+                  {/* Equipment */}
+                  {p.equipment && p.equipment.length > 0 && (
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {p.equipment.map((eq) => (
+                        <span
+                          key={eq}
+                          className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${
+                            active ? "bg-white/20 text-white" : "bg-[#F3F4F6] text-[#4B5563]"
+                          }`}
+                        >
+                          {eq}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </button>
               );
             })}

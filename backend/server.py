@@ -309,6 +309,91 @@ async def delete_bandobast(bid: str):
     return {"ok": True}
 
 
+# ---- Points Template & Import ----
+POINT_TEMPLATE_HEADERS = [
+    "point_name", "req_officer", "req_amaldar", "req_female_amaldar",
+    "req_home_guard", "equipment", "sector", "latitude", "longitude", "suchana",
+]
+
+
+@api_router.get("/bandobast-point-template")
+async def bandobast_point_template():
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "POINTS"
+    ws.append(POINT_TEMPLATE_HEADERS)
+    ws.append([
+        "Main Gate", 1, 4, 1, 2,
+        "Lathi,Wireless,Barricade",
+        "Sector A", 20.5316, 76.1853,
+        "Report 30 min prior. Maintain crowd control.",
+    ])
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=bandobast_points_template.xlsx"},
+    )
+
+
+@api_router.post("/bandobasts/{bid}/points/import")
+async def import_points(bid: str, file: UploadFile = File(...)):
+    bandobast = await db.bandobasts.find_one({"id": bid}, {"_id": 0})
+    if not bandobast:
+        raise HTTPException(status_code=404, detail="Bandobast not found")
+    content = await file.read()
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid Excel file: {e}")
+    ws = wb.active
+    rows = list(ws.iter_rows(values_only=True))
+    if len(rows) < 2:
+        return {"inserted": 0, "errors": []}
+    headers = [str(h).strip().lower() if h else "" for h in rows[0]]
+    if "point_name" not in headers:
+        raise HTTPException(status_code=400, detail="Missing required column: point_name")
+    inserted = 0
+    errors = []
+    for i, row in enumerate(rows[1:], start=2):
+        data = {headers[j]: row[j] for j in range(len(headers)) if j < len(row)}
+        name = str(data.get("point_name") or "").strip()
+        if not name:
+            continue
+        def _int(v):
+            try:
+                return int(v) if v not in (None, "") else 0
+            except Exception:
+                return 0
+        def _float(v):
+            try:
+                return float(v) if v not in (None, "") else None
+            except Exception:
+                return None
+        equip_raw = data.get("equipment") or ""
+        equipment = [e.strip() for e in str(equip_raw).split(",") if e.strip()]
+        try:
+            pt = BandobastPoint(
+                point_name=name,
+                req_officer=_int(data.get("req_officer")),
+                req_amaldar=_int(data.get("req_amaldar")),
+                req_female_amaldar=_int(data.get("req_female_amaldar")),
+                req_home_guard=_int(data.get("req_home_guard")),
+                equipment=equipment,
+                sector=str(data.get("sector") or "").strip(),
+                latitude=_float(data.get("latitude")),
+                longitude=_float(data.get("longitude")),
+                suchana=str(data.get("suchana") or "").strip(),
+            )
+            await db.bandobasts.update_one({"id": bid}, {"$push": {"points": pt.model_dump()}})
+            inserted += 1
+        except Exception as e:
+            errors.append({"row": i, "error": str(e)})
+    return {"inserted": inserted, "errors": errors}
+
+
 # ---- Points ----
 @api_router.post("/bandobasts/{bid}/points", response_model=BandobastPoint)
 async def add_point(bid: str, point: BandobastPoint):
