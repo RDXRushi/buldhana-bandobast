@@ -100,10 +100,9 @@ export default function BandobastDetail() {
             <Button
               className="bg-[#FF9933] hover:bg-[#E68A2E] text-white"
               onClick={deploy}
-              disabled={b.status === "deployed"}
               data-testid="deploy-btn-detail"
             >
-              <Send className="w-4 h-4 mr-2" /> {b.status === "deployed" ? "Deployed" : L.deploy}
+              <Send className="w-4 h-4 mr-2" /> {b.status === "deployed" ? "Re-deploy" : L.deploy}
             </Button>
           </div>
         </div>

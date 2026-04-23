@@ -1353,9 +1353,9 @@ function DeployStep({ bandobast, bid, staff, onRefresh, navigate }) {
           <Button variant="outline" onClick={() => navigate(`/bandobast/${bid}`)} data-testid="view-detail-btn">
             Open Full View
           </Button>
-          <Button className="bg-[#FF9933] hover:bg-[#E68A2E] text-white" onClick={deploy} disabled={deploying || bandobast?.status === "deployed"} data-testid="deploy-btn">
+          <Button className="bg-[#FF9933] hover:bg-[#E68A2E] text-white" onClick={deploy} disabled={deploying} data-testid="deploy-btn">
             <Send className="w-4 h-4 mr-2" />
-            {bandobast?.status === "deployed" ? "Deployed" : L.deploy}
+            {bandobast?.status === "deployed" ? "Re-deploy" : L.deploy}
           </Button>
         </div>
       </div>

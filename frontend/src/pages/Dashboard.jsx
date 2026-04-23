@@ -65,9 +65,9 @@ export default function Dashboard() {
   useEffect(() => { load(); }, []);
 
   const handleDelete = async (id) => {
-    if (!window.confirm("Delete this bandobast?")) return;
+    if (!window.confirm("Move this bandobast to Deleted Bandobasts? You can restore it later.")) return;
     await api.delete(`/bandobasts/${id}`);
-    toast.success("Deleted");
+    toast.success("Moved to Deleted Bandobasts");
     load();
   };
 

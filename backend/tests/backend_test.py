@@ -103,7 +103,9 @@ def test_staff_import(s):
     ws = wb.active
     ws.append(["rank", "bakkal_no", "name", "posting", "mobile", "gender", "district", "category"])
     bakkal = f"IMP{uuid.uuid4().hex[:8]}"
-    ws.append(["PSI", bakkal, "Imported Officer", "PS Test", "9888888888", "Male", "Buldhana", "Open"])
+    unique_suffix = uuid.uuid4().hex[:6]
+    ws.append(["PSI", bakkal, f"Imported Officer {unique_suffix}", "PS Test",
+               f"9{uuid.uuid4().int % 1000000000:09d}", "Male", "Buldhana", "Open"])
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -113,9 +115,10 @@ def test_staff_import(s):
     assert r.status_code == 200, r.text
     j = r.json()
     assert j["inserted"] == 1
-    # verify
-    rg = s.get(f"{API}/staff/by-bakkal/{bakkal}")
+    # officers have bakkal_no stripped to "" in create_staff code path; verify by name search
+    rg = s.get(f"{API}/staff", params={"search": f"Imported Officer {unique_suffix}"})
     assert rg.status_code == 200
+    assert any("Imported Officer" in x.get("name", "") for x in rg.json())
 
 
 # -------- Bandobast Full Flow --------
@@ -156,19 +159,14 @@ def test_full_bandobast_flow(s):
                 json={"staff_ids": staff_ids})
     assert rs2.status_code == 200
 
-    # Allotments - allot only first 2; 3rd should auto-go to reserved
+    # Allotments - allot only first 2; 3rd will auto-go to reserved on deploy
     ra = s.put(f"{API}/bandobasts/{bid}/allotments",
                json={"allotments": {pid: staff_ids[:2]}})
     assert ra.status_code == 200, ra.text
-    j = ra.json()
-    assert j["reserved_count"] == 1
-    assert j["reserved_point_id"] is not None
 
-    # Verify bandobast state
+    # Verify bandobast state (pre-deploy - no reserved point yet)
     bd = s.get(f"{API}/bandobasts/{bid}").json()
-    reserved = [p for p in bd["points"] if p.get("is_reserved")]
-    assert len(reserved) == 1
-    assert staff_ids[2] in bd["allotments"][reserved[0]["id"]]
+    assert bd["allotments"][pid] == staff_ids[:2]
 
     # QR
     rq = s.get(f"{API}/bandobasts/{bid}/points/{pid}/qr")
@@ -176,17 +174,24 @@ def test_full_bandobast_flow(s):
     assert rq.headers.get("content-type") == "image/png"
     assert rq.content[:8] == b"\x89PNG\r\n\x1a\n"
 
-    # Goshwara
+    # Goshwara pre-deploy (only allotted staff show up, not reserved yet)
     rg = s.get(f"{API}/bandobasts/{bid}/goshwara")
     assert rg.status_code == 200
     g = rg.json()
     assert "point_wise" in g and "staff_wise" in g
-    assert len(g["staff_wise"]) == 3
+    assert len(g["staff_wise"]) == 2  # Only the 2 allotted; 3rd is selected but not allotted yet
 
-    # Deploy
+    # Deploy - should auto-reserve unallotted staff
     rd = s.post(f"{API}/bandobasts/{bid}/deploy")
     assert rd.status_code == 200 and rd.json()["status"] == "deployed"
+    assert rd.json()["reserved_count"] == 1
     assert s.get(f"{API}/bandobasts/{bid}").json()["status"] == "deployed"
+
+    # Verify reserved point created after deploy
+    bd_after = s.get(f"{API}/bandobasts/{bid}").json()
+    reserved = [p for p in bd_after["points"] if p.get("is_reserved")]
+    assert len(reserved) == 1
+    assert staff_ids[2] in bd_after["allotments"][reserved[0]["id"]]
 
     # Delete point
     rdp = s.delete(f"{API}/bandobasts/{bid}/points/{pid}")
@@ -194,9 +199,21 @@ def test_full_bandobast_flow(s):
     bd2 = s.get(f"{API}/bandobasts/{bid}").json()
     assert not any(p["id"] == pid for p in bd2["points"])
 
-    # Delete bandobast
+    # Soft-delete bandobast -> should move to deleted list
     rdb = s.delete(f"{API}/bandobasts/{bid}")
     assert rdb.status_code == 200
+    # GET still works but appears in deleted list; not in main list
+    assert bid not in [b["id"] for b in s.get(f"{API}/bandobasts").json()]
+    assert bid in [b["id"] for b in s.get(f"{API}/bandobasts/deleted").json()]
+
+    # Restore
+    rr = s.post(f"{API}/bandobasts/{bid}/restore")
+    assert rr.status_code == 200
+    assert bid in [b["id"] for b in s.get(f"{API}/bandobasts").json()]
+
+    # Permanent delete
+    rp2 = s.delete(f"{API}/bandobasts/{bid}/permanent")
+    assert rp2.status_code == 200
     assert s.get(f"{API}/bandobasts/{bid}").status_code == 404
 
     # Cleanup staff
@@ -208,6 +225,176 @@ def test_404s(s):
     assert s.get(f"{API}/bandobasts/nonexistent").status_code == 404
     assert s.get(f"{API}/staff/nonexistent").status_code == 404
     assert s.delete(f"{API}/staff/nonexistent").status_code == 404
+
+
+# -------- Re-deploy (deploy twice on same bandobast) --------
+def test_redeploy(s):
+    r = s.post(f"{API}/bandobasts", json={"year": 2026, "date": "2026-02-01",
+               "name": "TEST_Redeploy", "spot": "X"})
+    bid = r.json()["id"]
+    # First deploy (no staff, no points) - should still succeed
+    r1 = s.post(f"{API}/bandobasts/{bid}/deploy")
+    assert r1.status_code == 200 and r1.json()["status"] == "deployed"
+    # Re-deploy should also succeed, not revert status
+    r2 = s.post(f"{API}/bandobasts/{bid}/deploy")
+    assert r2.status_code == 200 and r2.json()["status"] == "deployed"
+    assert s.get(f"{API}/bandobasts/{bid}").json()["status"] == "deployed"
+    # Status should not revert to draft on edits
+    s.patch(f"{API}/bandobasts/{bid}", json={"spot": "Changed"})
+    assert s.get(f"{API}/bandobasts/{bid}").json()["status"] == "deployed"
+    s.delete(f"{API}/bandobasts/{bid}/permanent")
+
+
+# -------- Out-of-District Staff CRUD (bandobast-scoped) --------
+def test_out_district_staff_flow(s):
+    r = s.post(f"{API}/bandobasts", json={"year": 2026, "date": "2026-03-01",
+               "name": "TEST_OD", "has_other_district": True})
+    bid = r.json()["id"]
+
+    # Add officer (no bakkal)
+    ro = s.post(f"{API}/bandobasts/{bid}/out-staff",
+                json={"staff_type": "officer", "rank": "PI", "bakkal_no": "",
+                      "name": "OD Officer", "mobile": "9000000001"})
+    assert ro.status_code == 200
+    oid = ro.json()["id"]
+    # Duplicate officer (same name+mobile) -> 409
+    rdup = s.post(f"{API}/bandobasts/{bid}/out-staff",
+                  json={"staff_type": "officer", "rank": "PI", "bakkal_no": "",
+                        "name": "OD Officer", "mobile": "9000000001"})
+    assert rdup.status_code == 409
+
+    # Add amaldar (bakkal required)
+    ra = s.post(f"{API}/bandobasts/{bid}/out-staff",
+                json={"staff_type": "amaldar", "rank": "HC",
+                      "bakkal_no": f"OD{uuid.uuid4().hex[:6]}", "name": "OD Amaldar"})
+    assert ra.status_code == 200
+    aid = ra.json()["id"]
+
+    # Amaldar without bakkal -> 400
+    rbad = s.post(f"{API}/bandobasts/{bid}/out-staff",
+                  json={"staff_type": "amaldar", "rank": "HC",
+                        "bakkal_no": "", "name": "No Bakkal"})
+    assert rbad.status_code == 400
+
+    # Verify in bandobast
+    bd = s.get(f"{API}/bandobasts/{bid}").json()
+    assert len(bd["other_district_staff"]) == 2
+
+    # Patch
+    rp = s.patch(f"{API}/bandobasts/{bid}/out-staff/{oid}", json={"posting": "Updated"})
+    assert rp.status_code == 200
+    bd2 = s.get(f"{API}/bandobasts/{bid}").json()
+    found = next(x for x in bd2["other_district_staff"] if x["id"] == oid)
+    assert found["posting"] == "Updated"
+
+    # Resolve OD staff via combined endpoint
+    rr = s.get(f"{API}/bandobasts/{bid}/staff/{oid}")
+    assert rr.status_code == 200 and rr.json()["name"] == "OD Officer"
+
+    # Delete OD
+    rd = s.delete(f"{API}/bandobasts/{bid}/out-staff/{aid}")
+    assert rd.status_code == 200
+    bd3 = s.get(f"{API}/bandobasts/{bid}").json()
+    assert len(bd3["other_district_staff"]) == 1
+
+    s.delete(f"{API}/bandobasts/{bid}/permanent")
+
+
+# -------- Officer: no bakkal required / uniqueness by name+mobile --------
+def test_officer_no_bakkal(s):
+    uniq = uuid.uuid4().hex[:6]
+    # Officer should be creatable without bakkal_no
+    r1 = s.post(f"{API}/staff", json={"staff_type": "officer", "rank": "PI",
+                                       "name": f"TEST_Off_{uniq}", "mobile": "9000000099"})
+    assert r1.status_code == 200, r1.text
+    sid = r1.json()["id"]
+    created_staff_ids.append(sid)
+    # Duplicate by name+mobile -> 409
+    r2 = s.post(f"{API}/staff", json={"staff_type": "officer", "rank": "PI",
+                                       "name": f"TEST_Off_{uniq}", "mobile": "9000000099"})
+    assert r2.status_code == 409
+    # Different mobile same name -> should pass
+    r3 = s.post(f"{API}/staff", json={"staff_type": "officer", "rank": "PI",
+                                       "name": f"TEST_Off_{uniq}", "mobile": "9000000100"})
+    assert r3.status_code == 200
+    created_staff_ids.append(r3.json()["id"])
+
+
+# -------- Amaldar MUST have bakkal -> 400 --------
+def test_amaldar_requires_bakkal(s):
+    r = s.post(f"{API}/staff", json={"staff_type": "amaldar", "rank": "HC", "name": "NoBak"})
+    assert r.status_code == 400
+
+
+# -------- Points template + import + reorder --------
+def test_points_template_and_import(s):
+    r = s.get(f"{API}/bandobast-point-template")
+    assert r.status_code == 200
+    assert "spreadsheet" in r.headers.get("content-type", "")
+
+    rb = s.post(f"{API}/bandobasts", json={"year": 2026, "date": "2026-04-01", "name": "TEST_Pts"})
+    bid = rb.json()["id"]
+
+    import openpyxl
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(["point_name", "req_officer", "req_amaldar", "req_female_amaldar",
+               "req_home_guard", "equipment", "sector", "latitude", "longitude", "suchana"])
+    ws.append(["Gate 1", 1, 2, 0, 1, "Lathi,Wireless", "A", 20.5, 76.1, "note"])
+    ws.append(["Gate 2", 0, 3, 1, 0, "Barricade", "B", 20.6, 76.2, "note2"])
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    rimp = s.post(f"{API}/bandobasts/{bid}/points/import",
+                  files={"file": ("p.xlsx", buf.getvalue(),
+                                  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")})
+    assert rimp.status_code == 200
+    assert rimp.json()["inserted"] == 2
+
+    bd = s.get(f"{API}/bandobasts/{bid}").json()
+    assert len(bd["points"]) == 2
+    pid = bd["points"][0]["id"]
+
+    # Reorder
+    r_seq = s.patch(f"{API}/bandobasts/{bid}/points/{pid}/seq", json={"seq": 5})
+    assert r_seq.status_code == 200
+    bd2 = s.get(f"{API}/bandobasts/{bid}").json()
+    assert next(p for p in bd2["points"] if p["id"] == pid)["seq"] == 5
+
+    s.delete(f"{API}/bandobasts/{bid}/permanent")
+
+
+# -------- Equipment assignments --------
+def test_equipment_assignments(s):
+    rb = s.post(f"{API}/bandobasts", json={"year": 2026, "date": "2026-05-01", "name": "TEST_Eq"})
+    bid = rb.json()["id"]
+    rpt = s.post(f"{API}/bandobasts/{bid}/points",
+                 json={"point_name": "Gate", "req_amaldar": 1, "equipment": ["Lathi", "Wireless"]})
+    pid = rpt.json()["id"]
+    rst = s.post(f"{API}/staff", json={"staff_type": "amaldar", "rank": "HC",
+                                        "bakkal_no": f"EQ{uuid.uuid4().hex[:6]}", "name": "Eq Staff"})
+    sid = rst.json()["id"]
+    created_staff_ids.append(sid)
+
+    assigns = {pid: {sid: "Lathi"}}
+    r = s.put(f"{API}/bandobasts/{bid}/equipment-assignments",
+              json={"equipment_assignments": assigns})
+    assert r.status_code == 200
+    bd = s.get(f"{API}/bandobasts/{bid}").json()
+    assert bd["equipment_assignments"][pid][sid] == "Lathi"
+
+    s.delete(f"{API}/bandobasts/{bid}/permanent")
+
+
+# -------- Staff-wise Excel export --------
+def test_staff_wise_export(s):
+    rb = s.post(f"{API}/bandobasts", json={"year": 2026, "date": "2026-06-01", "name": "TEST_Exp"})
+    bid = rb.json()["id"]
+    r = s.get(f"{API}/bandobasts/{bid}/export/staff-wise")
+    assert r.status_code == 200
+    assert "spreadsheet" in r.headers.get("content-type", "")
+    assert len(r.content) > 100
+    s.delete(f"{API}/bandobasts/{bid}/permanent")
 
 
 def teardown_module(module):
