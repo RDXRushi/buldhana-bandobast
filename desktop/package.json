@@ -13,6 +13,7 @@
   "build": {
     "appId": "in.buldhana.policebandobast",
     "productName": "Buldhana Police Bandobast",
+    "publish": null,
     "directories": { "output": "dist" },
     "files": [
       "main.js",
