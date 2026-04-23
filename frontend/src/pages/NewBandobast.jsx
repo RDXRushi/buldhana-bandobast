@@ -861,8 +861,9 @@ function OutDistrictModal({ open, mode, data, bid, onClose, onSaved }) {
   );
 }
 
-function AllotmentStep({ bandobast, bid, staff, onRefresh }) {
+function AllotmentStep({ bandobast, bid, staff, onRefresh, registerSave }) {
   const [allot, setAllot] = useState(bandobast?.allotments || {});
+  const [eqAssign, setEqAssign] = useState(bandobast?.equipment_assignments || {});
   const [activePoint, setActivePoint] = useState(null);
   const [saving, setSaving] = useState(false);
   const [seqDraft, setSeqDraft] = useState({}); // pointId -> string
@@ -873,6 +874,7 @@ function AllotmentStep({ bandobast, bid, staff, onRefresh }) {
 
   useEffect(() => {
     setAllot(bandobast?.allotments || {});
+    setEqAssign(bandobast?.equipment_assignments || {});
     const firstPoint = (bandobast?.points || []).find((p) => !p.is_reserved);
     if (firstPoint) setActivePoint(firstPoint.id);
   }, [bandobast]);

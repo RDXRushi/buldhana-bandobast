@@ -774,12 +774,69 @@ async def point_qr(bid: str, pid: str):
         raise HTTPException(status_code=404, detail="Point not found")
     lat = point.get("latitude")
     lng = point.get("longitude")
+
+    # Resolve allotted staff names + equipment
+    allot = bandobast.get("allotments", {}).get(pid, [])
+    eq_map = bandobast.get("equipment_assignments", {}).get(pid, {})
+    all_ids = allot
+    home = await db.staff.find({"id": {"$in": all_ids}}, {"_id": 0}).to_list(1000) if all_ids else []
+    out = [s for s in bandobast.get("other_district_staff", []) if s["id"] in set(all_ids)]
+    staff_map = {s["id"]: s for s in home + out}
+
+    officers = []
+    amaldars = []
+    home_guards = []
+    for sid in allot:
+        s = staff_map.get(sid)
+        if not s:
+            continue
+        bkl = s.get("bakkal_no") or ""
+        eq = eq_map.get(sid)
+        line = s.get("name", "")
+        extras = [s.get("rank", "")]
+        if bkl and s.get("staff_type") != "officer":
+            extras.append(f"B{bkl}")
+        if s.get("mobile"):
+            extras.append(s["mobile"])
+        if eq:
+            extras.append(f"[{eq}]")
+        line = f"{line} ({', '.join([e for e in extras if e])})"
+        if s.get("staff_type") == "officer":
+            officers.append(line)
+        elif s.get("staff_type") == "amaldar":
+            amaldars.append(line)
+        else:
+            home_guards.append(line)
+
+    lines = [
+        f"BANDOBAST: {bandobast.get('name', '')}",
+        f"DATE: {bandobast.get('date', '')}",
+        f"POINT: {point.get('point_name', '')}",
+    ]
+    if point.get("sector"):
+        lines.append(f"SECTOR: {point['sector']}")
     if lat is not None and lng is not None:
-        # Google Maps URL — scanning opens the map at the point location
-        text = f"https://www.google.com/maps?q={lat},{lng}"
-    else:
-        text = f"{point.get('point_name', '')} | {bandobast.get('name', '')} | {bandobast.get('date', '')}"
-    img = qrcode.make(text)
+        lines.append(f"MAP: https://www.google.com/maps?q={lat},{lng}")
+    if point.get("equipment"):
+        lines.append(f"EQUIPMENT: {', '.join(point['equipment'])}")
+    if officers:
+        lines.append("OFFICERS:")
+        lines.extend([f"- {o}" for o in officers])
+    if amaldars:
+        lines.append("AMALDARS:")
+        lines.extend([f"- {a}" for a in amaldars])
+    if home_guards:
+        lines.append("HOME GUARDS:")
+        lines.extend([f"- {h}" for h in home_guards])
+    if point.get("suchana"):
+        lines.append(f"SUCHANA: {point['suchana']}")
+
+    text = "\n".join(lines)
+    # Use higher version + lower error correction to accommodate more data
+    qr = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=6, border=2)
+    qr.add_data(text)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     buf.seek(0)
