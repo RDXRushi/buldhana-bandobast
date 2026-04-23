@@ -46,7 +46,9 @@ export default function PrintDutyPass() {
             <div className="border border-[#E5E7EB] rounded-md p-3 text-sm">
               <div className="text-xs uppercase tracking-wider text-[#6B7280] mb-1">Personnel</div>
               <div className="font-bold text-base">{s.name}</div>
-              <div className="text-xs mt-1">{s.rank} · Bakkal {s.bakkal_no}</div>
+              <div className="text-xs mt-1">
+                {s.rank}{s.staff_type !== "officer" && s.bakkal_no ? ` · Bakkal ${s.bakkal_no}` : ""}
+              </div>
               <div className="text-xs text-[#6B7280]">{s.posting}</div>
 
               <div className="mt-3 pt-3 border-t border-[#E5E7EB]">
@@ -57,12 +59,29 @@ export default function PrintDutyPass() {
                   <div className="text-xs font-mono text-[#6B7280]">{point.latitude}, {point.longitude}</div>
                 )}
               </div>
+
+              {(() => {
+                const eq = (b.equipment_assignments || {})[pid]?.[sid];
+                return eq ? (
+                  <div className="mt-3 pt-3 border-t border-[#E5E7EB]">
+                    <div className="text-xs uppercase tracking-wider text-[#6B7280] mb-1">Equipment Assigned</div>
+                    <div className="inline-block bg-[#FF9933]/15 text-[#B36B22] px-2 py-0.5 rounded text-sm font-bold">
+                      {eq}
+                    </div>
+                  </div>
+                ) : null;
+              })()}
             </div>
-            <img
-              src={`${BACKEND_URL}/api/bandobasts/${bid}/points/${pid}/qr`}
-              alt="QR"
-              className="w-28 h-28 border border-[#E5E7EB] rounded"
-            />
+            <div className="flex flex-col items-center gap-1">
+              <img
+                src={`${BACKEND_URL}/api/bandobasts/${bid}/points/${pid}/qr`}
+                alt="QR"
+                className="w-28 h-28 border border-[#E5E7EB] rounded"
+              />
+              <div className="text-[9px] text-[#6B7280] text-center max-w-[120px] leading-tight">
+                Scan to open<br />{point?.point_name} on Map
+              </div>
+            </div>
           </div>
 
           {point?.suchana && (

@@ -107,7 +107,9 @@ class Bandobast(BaseModel):
     points: List[BandobastPoint] = []
     selected_staff_ids: List[str] = []
     allotments: dict = {}  # point_id -> [staff_id,...]
+    equipment_assignments: dict = {}  # point_id -> {staff_id: equipment_name}
     status: Literal["draft", "deployed"] = "draft"
+    deleted: bool = False
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
@@ -317,7 +319,13 @@ async def import_staff(staff_type: StaffType, file: UploadFile = File(...)):
 
 @api_router.get("/bandobasts", response_model=List[Bandobast])
 async def list_bandobasts():
-    items = await db.bandobasts.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    items = await db.bandobasts.find({"deleted": {"$ne": True}}, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    return items
+
+
+@api_router.get("/bandobasts/deleted", response_model=List[Bandobast])
+async def list_deleted_bandobasts():
+    items = await db.bandobasts.find({"deleted": True}, {"_id": 0}).sort("created_at", -1).to_list(1000)
     return items
 
 
@@ -348,10 +356,27 @@ async def update_bandobast(bid: str, payload: BandobastUpdate):
 
 @api_router.delete("/bandobasts/{bid}")
 async def delete_bandobast(bid: str):
+    """Soft-delete: moves to Deleted Bandobasts tab."""
+    res = await db.bandobasts.update_one({"id": bid}, {"$set": {"deleted": True}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Not found")
+    return {"ok": True, "soft_deleted": True}
+
+
+@api_router.post("/bandobasts/{bid}/restore")
+async def restore_bandobast(bid: str):
+    res = await db.bandobasts.update_one({"id": bid}, {"$set": {"deleted": False}})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Not found")
+    return {"ok": True, "restored": True}
+
+
+@api_router.delete("/bandobasts/{bid}/permanent")
+async def delete_bandobast_permanent(bid: str):
     res = await db.bandobasts.delete_one({"id": bid})
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Not found")
-    return {"ok": True}
+    return {"ok": True, "permanent": True}
 
 
 # ---- Points Template & Import ----
@@ -723,6 +748,21 @@ async def deploy_bandobast(bid: str):
     return {"ok": True, "status": "deployed", "reserved_count": len(remaining)}
 
 
+# ---- Equipment Assignment ----
+class EquipmentAssignmentPayload(BaseModel):
+    equipment_assignments: dict  # point_id -> {staff_id: equipment_name}
+
+
+@api_router.put("/bandobasts/{bid}/equipment-assignments")
+async def set_equipment_assignments(bid: str, payload: EquipmentAssignmentPayload):
+    res = await db.bandobasts.update_one(
+        {"id": bid}, {"$set": {"equipment_assignments": payload.equipment_assignments}}
+    )
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Not found")
+    return {"ok": True}
+
+
 # ---- QR Code ----
 @api_router.get("/bandobasts/{bid}/points/{pid}/qr")
 async def point_qr(bid: str, pid: str):
@@ -732,14 +772,13 @@ async def point_qr(bid: str, pid: str):
     point = next((p for p in bandobast.get("points", []) if p["id"] == pid), None)
     if not point:
         raise HTTPException(status_code=404, detail="Point not found")
-    data = {
-        "bandobast": bandobast.get("name"),
-        "date": bandobast.get("date"),
-        "point": point.get("point_name"),
-        "lat": point.get("latitude"),
-        "lng": point.get("longitude"),
-    }
-    text = " | ".join([f"{k}:{v}" for k, v in data.items() if v is not None])
+    lat = point.get("latitude")
+    lng = point.get("longitude")
+    if lat is not None and lng is not None:
+        # Google Maps URL — scanning opens the map at the point location
+        text = f"https://www.google.com/maps?q={lat},{lng}"
+    else:
+        text = f"{point.get('point_name', '')} | {bandobast.get('name', '')} | {bandobast.get('date', '')}"
     img = qrcode.make(text)
     buf = io.BytesIO()
     img.save(buf, format="PNG")

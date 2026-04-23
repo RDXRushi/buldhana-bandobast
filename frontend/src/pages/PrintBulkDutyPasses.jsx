@@ -64,19 +64,37 @@ export default function PrintBulkDutyPasses() {
                 <div className="border border-[#E5E7EB] rounded-md p-2.5 text-xs">
                   <div className="text-[10px] uppercase tracking-wider text-[#6B7280]">Personnel</div>
                   <div className="font-bold text-sm">{s.name}</div>
-                  <div className="text-[10px] mt-0.5">{s.rank} · Bakkal {s.bakkal_no}</div>
+                  <div className="text-[10px] mt-0.5">
+                    {s.rank}{s.staff_type !== "officer" && s.bakkal_no ? ` · Bakkal ${s.bakkal_no}` : ""}
+                  </div>
                   <div className="text-[10px] text-[#6B7280]">{s.posting}</div>
                   <div className="mt-2 pt-2 border-t border-[#E5E7EB]">
                     <div className="text-[10px] uppercase tracking-wider text-[#6B7280]">Duty Point</div>
                     <div className="font-semibold text-sm">{point.point_name}</div>
                     {point.sector && <div className="text-[10px]">Sector: {point.sector}</div>}
                   </div>
+                  {(() => {
+                    const eq = (b.equipment_assignments || {})[point.id]?.[s.id];
+                    return eq ? (
+                      <div className="mt-2 pt-2 border-t border-[#E5E7EB]">
+                        <div className="text-[10px] uppercase tracking-wider text-[#6B7280]">Equipment</div>
+                        <div className="inline-block bg-[#FF9933]/15 text-[#B36B22] px-1.5 py-0.5 rounded text-[11px] font-bold">
+                          {eq}
+                        </div>
+                      </div>
+                    ) : null;
+                  })()}
                 </div>
-                <img
-                  src={`${BACKEND_URL}/api/bandobasts/${bid}/points/${point.id}/qr`}
-                  alt="QR"
-                  className="w-24 h-24 border border-[#E5E7EB] rounded"
-                />
+                <div className="flex flex-col items-center gap-1">
+                  <img
+                    src={`${BACKEND_URL}/api/bandobasts/${bid}/points/${point.id}/qr`}
+                    alt="QR"
+                    className="w-24 h-24 border border-[#E5E7EB] rounded"
+                  />
+                  <div className="text-[8px] text-[#6B7280] text-center max-w-[100px] leading-tight">
+                    Scan to open<br />{point.point_name} on Map
+                  </div>
+                </div>
               </div>
 
               {point.suchana && (

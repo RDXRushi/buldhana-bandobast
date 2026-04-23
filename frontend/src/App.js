@@ -11,6 +11,7 @@ import PrintDutyPass from "./pages/PrintDutyPass";
 import PrintGoshwara from "./pages/PrintGoshwara";
 import PrintBulkIDCards from "./pages/PrintBulkIDCards";
 import PrintBulkDutyPasses from "./pages/PrintBulkDutyPasses";
+import DeletedBandobasts from "./pages/DeletedBandobasts";
 import Login from "./pages/Login";
 import LoadingScreen from "./pages/LoadingScreen";
 import RequireAuth from "./components/RequireAuth";
@@ -36,6 +37,7 @@ function App() {
             <Route index element={<Dashboard />} />
             <Route path="staff" element={<StaffManagement />} />
             <Route path="bandobast/new" element={<NewBandobast />} />
+            <Route path="bandobast/deleted" element={<DeletedBandobasts />} />
             <Route path="bandobast/edit/:id" element={<NewBandobast />} />
             <Route path="bandobast/:id" element={<BandobastDetail />} />
           </Route>

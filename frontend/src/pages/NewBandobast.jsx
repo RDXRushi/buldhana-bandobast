@@ -58,6 +58,11 @@ export default function NewBandobast() {
     has_other_district: false,
   });
   const [staff, setStaff] = useState([]);
+  // Registered save functions from step components (for Save+Next behavior)
+  const saveFnRef = React.useRef({});
+  const setSaveFn = React.useCallback((stepIdx, fn) => {
+    saveFnRef.current[stepIdx] = fn;
+  }, []);
 
   // Merged staff (home + out-district from this bandobast)
   const allStaff = React.useMemo(
@@ -179,8 +184,8 @@ export default function NewBandobast() {
         )}
 
         {step === 1 && <PointsStep bandobast={bandobast} bid={bid} onRefresh={refresh} />}
-        {step === 2 && <SelectStaffStep bandobast={bandobast} bid={bid} staff={staff} allStaff={allStaff} onRefresh={refresh} />}
-        {step === 3 && <AllotmentStep bandobast={bandobast} bid={bid} staff={allStaff} onRefresh={refresh} />}
+        {step === 2 && <SelectStaffStep bandobast={bandobast} bid={bid} staff={staff} allStaff={allStaff} onRefresh={refresh} registerSave={(fn) => setSaveFn(2, fn)} />}
+        {step === 3 && <AllotmentStep bandobast={bandobast} bid={bid} staff={allStaff} onRefresh={refresh} registerSave={(fn) => setSaveFn(3, fn)} />}
         {step === 4 && <DeployStep bandobast={bandobast} bid={bid} staff={allStaff} onRefresh={refresh} navigate={navigate} />}
 
         {/* Footer nav */}
@@ -193,8 +198,24 @@ export default function NewBandobast() {
               <Save className="w-4 h-4 mr-2" /> {L.save} & {L.next}
             </Button>
           ) : step < 4 ? (
-            <Button className="bg-[#2E3192] hover:bg-[#202266]" onClick={() => setStep(step + 1)} disabled={!bid} data-testid="wizard-next">
-              {L.next} <ChevronRight className="w-4 h-4 ml-1" />
+            <Button
+              className="bg-[#2E3192] hover:bg-[#202266]"
+              onClick={async () => {
+                // For steps 2 & 3, auto-save before navigating
+                const fn = saveFnRef.current[step];
+                if (fn) {
+                  try { await fn(); } catch { return; }
+                }
+                setStep(step + 1);
+              }}
+              disabled={!bid}
+              data-testid="wizard-next"
+            >
+              {step === 2 || step === 3 ? (
+                <><Save className="w-4 h-4 mr-2" /> {L.save} & {L.next}</>
+              ) : (
+                <>{L.next} <ChevronRight className="w-4 h-4 ml-1" /></>
+              )}
             </Button>
           ) : null}
         </div>
@@ -406,7 +427,7 @@ function PointsStep({ bandobast, bid, onRefresh }) {
   );
 }
 
-function SelectStaffStep({ bandobast, bid, staff, allStaff, onRefresh }) {
+function SelectStaffStep({ bandobast, bid, staff, allStaff, onRefresh, registerSave }) {
   const [selected, setSelected] = useState(new Set(bandobast?.selected_staff_ids || []));
   const [typeFilter, setTypeFilter] = useState("all");
   const [rankFilter, setRankFilter] = useState("all");
@@ -417,6 +438,18 @@ function SelectStaffStep({ bandobast, bid, staff, allStaff, onRefresh }) {
   useEffect(() => {
     setSelected(new Set(bandobast?.selected_staff_ids || []));
   }, [bandobast]);
+
+  // Register save function for Save+Next button
+  useEffect(() => {
+    if (registerSave) {
+      registerSave(async () => {
+        await api.put(`/bandobasts/${bid}/selected-staff`, { staff_ids: [...selected] });
+        toast.success("Selection saved");
+        onRefresh();
+      });
+    }
+    // eslint-disable-next-line
+  }, [selected, bid]);
 
   const totals = (bandobast?.points || []).reduce(
     (acc, p) => {
@@ -912,15 +945,47 @@ function AllotmentStep({ bandobast, bid, staff, onRefresh }) {
   };
   const removeFromPoint = (sid) => {
     setAllot({ ...allot, [activePoint]: (allot[activePoint] || []).filter((x) => x !== sid) });
+    // Also remove any equipment assignment for this staff at this point
+    if (eqAssign[activePoint] && eqAssign[activePoint][sid]) {
+      const next = { ...eqAssign };
+      const pmap = { ...next[activePoint] };
+      delete pmap[sid];
+      next[activePoint] = pmap;
+      setEqAssign(next);
+    }
+  };
+  const assignEquipment = (sid, equipment) => {
+    if (!activePoint) return;
+    const pmap = { ...(eqAssign[activePoint] || {}) };
+    // Ensure 1:1 — remove this equipment from any other staff at this point
+    if (equipment) {
+      for (const k of Object.keys(pmap)) {
+        if (pmap[k] === equipment && k !== sid) delete pmap[k];
+      }
+      pmap[sid] = equipment;
+    } else {
+      delete pmap[sid];
+    }
+    setEqAssign({ ...eqAssign, [activePoint]: pmap });
   };
 
   const save = async () => {
     setSaving(true);
-    await api.put(`/bandobasts/${bid}/allotments`, { allotments: allot });
+    await Promise.all([
+      api.put(`/bandobasts/${bid}/allotments`, { allotments: allot }),
+      api.put(`/bandobasts/${bid}/equipment-assignments`, { equipment_assignments: eqAssign }),
+    ]);
     toast.success("Allotment saved");
     onRefresh();
     setSaving(false);
   };
+
+  useEffect(() => {
+    if (registerSave) {
+      registerSave(save);
+    }
+    // eslint-disable-next-line
+  }, [allot, eqAssign, bid]);
 
   const commitSeq = async (pid, currentSeq) => {
     const raw = seqDraft[pid];
@@ -1183,19 +1248,72 @@ function AllotmentStep({ bandobast, bid, staff, onRefresh }) {
           <h4 className="font-bold text-sm uppercase tracking-wider text-[#6B7280] mb-3">
             {currentPt ? currentPt.point_name : "Select a point"} ({current.length})
           </h4>
+          {currentPt && currentPt.equipment && currentPt.equipment.length > 0 && (
+            <div className="mb-3 p-2 bg-[#FF9933]/5 border border-[#FF9933]/30 rounded text-[10px]">
+              <div className="font-bold text-[#B36B22] uppercase tracking-wider mb-1">Equipment at this point</div>
+              <div className="flex flex-wrap gap-1">
+                {currentPt.equipment.map((eq) => {
+                  const assignedTo = Object.entries(eqAssign[activePoint] || {}).find(([, v]) => v === eq)?.[0];
+                  const assignedStaff = assignedTo ? getStaff(assignedTo) : null;
+                  return (
+                    <span
+                      key={eq}
+                      className={`px-1.5 py-0.5 rounded font-semibold ${
+                        assignedStaff ? "bg-[#138808]/15 text-[#0E6306]" : "bg-[#DC2626]/10 text-[#DC2626]"
+                      }`}
+                    >
+                      {eq}{assignedStaff ? ` → ${assignedStaff.name}` : " (unassigned)"}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           <div className="space-y-1">
             {current.map((sid) => {
               const s = getStaff(sid);
               if (!s) return null;
+              const assigned = (eqAssign[activePoint] || {})[sid] || "";
+              const ptEquip = currentPt?.equipment || [];
+              // Available = not assigned to anyone else at this point
+              const takenByOthers = new Set(
+                Object.entries(eqAssign[activePoint] || {})
+                  .filter(([k]) => k !== sid)
+                  .map(([, v]) => v)
+              );
               return (
-                <div key={sid} className="flex items-center justify-between p-2 border border-[#E5E7EB] rounded bg-[#F9FAFB]">
-                  <div className="min-w-0">
-                    <div className="text-sm font-semibold truncate">{s.name}</div>
-                    <div className="text-xs text-[#6B7280] truncate">{s.rank} · {s.bakkal_no}{s.posting && ` · ${s.posting}`}</div>
+                <div key={sid} className="p-2 border border-[#E5E7EB] rounded bg-[#F9FAFB]">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold truncate">{s.name}</div>
+                      <div className="text-xs text-[#6B7280] truncate">
+                        {s.rank}
+                        {s.staff_type !== "officer" && s.bakkal_no ? ` · ${s.bakkal_no}` : ""}
+                        {s.mobile ? ` · ${s.mobile}` : ""}
+                      </div>
+                    </div>
+                    <button className="text-[#DC2626] hover:bg-[#FEE2E2] rounded p-1 flex-shrink-0" onClick={() => removeFromPoint(sid)} data-testid={`allot-remove-${sid}`}>
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
-                  <button className="text-[#DC2626] hover:bg-[#FEE2E2] rounded p-1 flex-shrink-0" onClick={() => removeFromPoint(sid)} data-testid={`allot-remove-${sid}`}>
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  {ptEquip.length > 0 && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <span className="text-[10px] text-[#6B7280] font-semibold uppercase">Equipment:</span>
+                      <select
+                        value={assigned}
+                        onChange={(e) => assignEquipment(sid, e.target.value)}
+                        className="flex-1 text-xs border border-[#E5E7EB] rounded px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-[#2E3192]"
+                        data-testid={`eq-assign-${sid}`}
+                      >
+                        <option value="">— none —</option>
+                        {ptEquip.map((eq) => (
+                          <option key={eq} value={eq} disabled={takenByOthers.has(eq)}>
+                            {eq}{takenByOthers.has(eq) ? " (taken)" : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -1261,30 +1379,54 @@ function DeployStep({ bandobast, bid, staff, onRefresh, navigate }) {
 
       {view === "point" ? (
         <div className="space-y-4">
-          {points.map((p) => (
-            <div key={p.id} className="bg-white border border-[#E5E7EB] rounded-md p-4">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <h4 className="font-bold text-lg">{p.point_name} {p.is_reserved && <Badge className="ml-2 bg-[#FF9933]/15 text-[#B36B22]">Reserved</Badge>}</h4>
-                  <div className="text-xs text-[#6B7280]">{p.sector} {p.latitude && `· ${p.latitude}, ${p.longitude}`}</div>
-                </div>
-                <Badge className="bg-[#138808]/15 text-[#0E6306]">{(allot[p.id] || []).length} personnel</Badge>
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
-                {(allot[p.id] || []).map((sid) => {
-                  const s = getStaff(sid);
-                  if (!s) return null;
-                  return (
-                    <div key={sid} className="text-xs bg-[#F9FAFB] border border-[#E5E7EB] rounded p-2">
-                      <div className="font-semibold">{s.name}</div>
-                      <div className="text-[#6B7280]">{s.rank} · {s.bakkal_no}</div>
+          {points.map((p) => {
+            const eqMap = (bandobast?.equipment_assignments || {})[p.id] || {};
+            return (
+              <div key={p.id} className="bg-white border border-[#E5E7EB] rounded-md p-4">
+                {/* 1. Point name + info */}
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <h4 className="font-bold text-lg">{p.point_name} {p.is_reserved && <Badge className="ml-2 bg-[#FF9933]/15 text-[#B36B22]">Reserved</Badge>}</h4>
+                    <div className="text-xs text-[#6B7280]">
+                      {p.sector && `Sector: ${p.sector}`}
+                      {p.latitude && ` · ${p.latitude}, ${p.longitude}`}
+                      {p.equipment?.length > 0 && ` · Equipment: ${p.equipment.join(", ")}`}
                     </div>
-                  );
-                })}
-                {(allot[p.id] || []).length === 0 && <div className="text-xs text-[#6B7280]">None allotted</div>}
+                  </div>
+                  <Badge className="bg-[#138808]/15 text-[#0E6306]">{(allot[p.id] || []).length} personnel</Badge>
+                </div>
+                {/* 2. Staff */}
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                  {(allot[p.id] || []).map((sid) => {
+                    const s = getStaff(sid);
+                    if (!s) return null;
+                    const eq = eqMap[sid];
+                    return (
+                      <div key={sid} className="text-xs bg-[#F9FAFB] border border-[#E5E7EB] rounded p-2">
+                        <div className="font-semibold">{s.name}</div>
+                        <div className="text-[#6B7280]">
+                          {s.rank}
+                          {s.staff_type !== "officer" && s.bakkal_no ? ` · ${s.bakkal_no}` : ""}
+                        </div>
+                        {eq && (
+                          <div className="mt-1 inline-block bg-[#FF9933]/15 text-[#B36B22] px-1.5 py-0.5 rounded text-[10px] font-semibold">
+                            {eq}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {(allot[p.id] || []).length === 0 && <div className="text-xs text-[#6B7280]">None allotted</div>}
+                </div>
+                {/* 3. Suchana (last) */}
+                {p.suchana && (
+                  <div className="mt-3 p-2 bg-[#FF9933]/5 border-l-2 border-[#FF9933] rounded text-xs">
+                    <span className="font-bold text-[#B36B22]">Suchana: </span>{p.suchana}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <div className="bg-white border border-[#E5E7EB] rounded-md">
@@ -1314,6 +1456,7 @@ function DeployStep({ bandobast, bid, staff, onRefresh, navigate }) {
                   <TableHead>Gender</TableHead>
                   <TableHead>District</TableHead>
                   <TableHead>Category</TableHead>
+                  <TableHead>Equipment</TableHead>
                   <TableHead>Points</TableHead>
                 </TableRow>
               </TableHeader>
@@ -1322,18 +1465,30 @@ function DeployStep({ bandobast, bid, staff, onRefresh, navigate }) {
                   const s = getStaff(sid);
                   if (!s) return null;
                   const assignedPoints = points.filter((p) => (allot[p.id] || []).includes(sid));
+                  const equipList = assignedPoints
+                    .map((p) => ((bandobast?.equipment_assignments || {})[p.id] || {})[sid])
+                    .filter(Boolean);
                   return (
                     <TableRow key={sid}>
                       <TableCell>{idx + 1}</TableCell>
                       <TableCell><Badge className="bg-[#2E3192]/10 text-[#2E3192]">{s.staff_type}</Badge></TableCell>
                       <TableCell>{s.rank}</TableCell>
-                      <TableCell className="font-mono">{s.bakkal_no}</TableCell>
+                      <TableCell className="font-mono">{s.staff_type === "officer" ? "—" : (s.bakkal_no || "-")}</TableCell>
                       <TableCell className="font-medium">{s.name}</TableCell>
                       <TableCell className="text-xs">{s.posting || "-"}</TableCell>
                       <TableCell className="font-mono text-xs">{s.mobile || "-"}</TableCell>
                       <TableCell>{s.gender}</TableCell>
                       <TableCell>{s.district}</TableCell>
                       <TableCell>{s.category || "-"}</TableCell>
+                      <TableCell>
+                        {equipList.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {equipList.map((e, i) => (
+                              <Badge key={i} className="bg-[#FF9933]/15 text-[#B36B22]">{e}</Badge>
+                            ))}
+                          </div>
+                        ) : <span className="text-xs text-[#6B7280]">—</span>}
+                      </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1">
                           {assignedPoints.map((p) => (

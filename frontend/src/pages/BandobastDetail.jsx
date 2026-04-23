@@ -111,76 +111,93 @@ export default function BandobastDetail() {
 
       {/* Points with goshwara */}
       <div className="space-y-4">
-        {data.point_wise.map(({ point: p, staff: ps }) => (
-          <div key={p.id} className="bg-white border border-[#E5E7EB] rounded-md shadow-sm">
-            <div className="px-5 py-4 border-b border-[#E5E7EB] flex items-center justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="font-display font-bold text-lg">{p.point_name}</h3>
-                  {p.is_reserved && <Badge className="bg-[#FF9933]/15 text-[#B36B22]">Reserved</Badge>}
+        {data.point_wise.map(({ point: p, staff: ps }) => {
+          const eqMap = (b.equipment_assignments || {})[p.id] || {};
+          return (
+            <div key={p.id} className="bg-white border border-[#E5E7EB] rounded-md shadow-sm">
+              {/* 1. Point name + info */}
+              <div className="px-5 py-4 border-b border-[#E5E7EB] flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-display font-bold text-lg">{p.point_name}</h3>
+                    {p.is_reserved && <Badge className="bg-[#FF9933]/15 text-[#B36B22]">Reserved</Badge>}
+                  </div>
+                  <div className="text-xs text-[#6B7280] mt-1">
+                    {p.sector && `Sector: ${p.sector} · `}
+                    {p.latitude && p.longitude && `${p.latitude}, ${p.longitude}`}
+                    {p.equipment?.length > 0 && ` · Equipment: ${p.equipment.join(", ")}`}
+                  </div>
                 </div>
-                <div className="text-xs text-[#6B7280] mt-1">
-                  {p.sector && `Sector: ${p.sector} · `}
-                  {p.latitude && p.longitude && `${p.latitude}, ${p.longitude}`}
-                  {p.equipment?.length > 0 && ` · Equip: ${p.equipment.join(", ")}`}
+                <div className="flex gap-2">
+                  {p.latitude && p.longitude && (
+                    <a
+                      href={`https://www.google.com/maps?q=${p.latitude},${p.longitude}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-sm text-[#2E3192] hover:underline"
+                      data-testid={`map-${p.id}`}
+                    >
+                      <MapPin className="w-4 h-4" /> Map
+                    </a>
+                  )}
+                  <button onClick={() => setQrPoint(p)} className="inline-flex items-center gap-1 text-sm text-[#2E3192] hover:underline" data-testid={`qr-${p.id}`}>
+                    <QrCode className="w-4 h-4" /> QR
+                  </button>
                 </div>
-                {p.suchana && <div className="text-xs mt-2 p-2 bg-[#FF9933]/5 border-l-2 border-[#FF9933] rounded">{p.suchana}</div>}
               </div>
-              <div className="flex gap-2">
-                {p.latitude && p.longitude && (
-                  <a
-                    href={`https://www.google.com/maps?q=${p.latitude},${p.longitude}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 text-sm text-[#2E3192] hover:underline"
-                    data-testid={`map-${p.id}`}
-                  >
-                    <MapPin className="w-4 h-4" /> Map
-                  </a>
-                )}
-                <button onClick={() => setQrPoint(p)} className="inline-flex items-center gap-1 text-sm text-[#2E3192] hover:underline" data-testid={`qr-${p.id}`}>
-                  <QrCode className="w-4 h-4" /> QR
-                </button>
-              </div>
-            </div>
-            <Table>
-              <TableHeader className="bg-[#F9FAFB]">
-                <TableRow>
-                  <TableHead className="w-12">Sr.</TableHead>
-                  <TableHead>Rank</TableHead>
-                  <TableHead>Bakkal</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Mobile</TableHead>
-                  <TableHead>Duty Pass / ID</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {ps.length === 0 && (
-                  <TableRow><TableCell colSpan={6} className="text-center py-4 text-[#6B7280]">No staff allotted</TableCell></TableRow>
-                )}
-                {ps.map((s, i) => (
-                  <TableRow key={s.id}>
-                    <TableCell>{i + 1}</TableCell>
-                    <TableCell>{s.rank}</TableCell>
-                    <TableCell className="font-mono">{s.bakkal_no}</TableCell>
-                    <TableCell className="font-medium">{s.name}</TableCell>
-                    <TableCell className="font-mono text-xs">{s.mobile || "-"}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
-                        <Link to={`/print/duty-pass/${id}/${p.id}/${s.id}`} className="text-xs text-[#2E3192] hover:underline inline-flex items-center gap-1" data-testid={`pass-${s.id}`}>
-                          <IdCard className="w-3 h-3" /> Pass
-                        </Link>
-                        <Link to={`/print/id-card/${s.id}?bid=${id}`} className="text-xs text-[#FF9933] hover:underline inline-flex items-center gap-1" data-testid={`idcard-${s.id}`}>
-                          <IdCard className="w-3 h-3" /> ID
-                        </Link>
-                      </div>
-                    </TableCell>
+              {/* 2. Staff */}
+              <Table>
+                <TableHeader className="bg-[#F9FAFB]">
+                  <TableRow>
+                    <TableHead className="w-12">Sr.</TableHead>
+                    <TableHead>Rank</TableHead>
+                    <TableHead>Bakkal</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Mobile</TableHead>
+                    <TableHead>Equipment</TableHead>
+                    <TableHead>Duty Pass / ID</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        ))}
+                </TableHeader>
+                <TableBody>
+                  {ps.length === 0 && (
+                    <TableRow><TableCell colSpan={7} className="text-center py-4 text-[#6B7280]">No staff allotted</TableCell></TableRow>
+                  )}
+                  {ps.map((s, i) => (
+                    <TableRow key={s.id}>
+                      <TableCell>{i + 1}</TableCell>
+                      <TableCell>{s.rank}</TableCell>
+                      <TableCell className="font-mono">{s.staff_type === "officer" ? "—" : (s.bakkal_no || "-")}</TableCell>
+                      <TableCell className="font-medium">{s.name}</TableCell>
+                      <TableCell className="font-mono text-xs">{s.mobile || "-"}</TableCell>
+                      <TableCell>
+                        {eqMap[s.id] ? (
+                          <Badge className="bg-[#FF9933]/15 text-[#B36B22]">{eqMap[s.id]}</Badge>
+                        ) : <span className="text-xs text-[#6B7280]">—</span>}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-2">
+                          <Link to={`/print/duty-pass/${id}/${p.id}/${s.id}`} className="text-xs text-[#2E3192] hover:underline inline-flex items-center gap-1" data-testid={`pass-${s.id}`}>
+                            <IdCard className="w-3 h-3" /> Pass
+                          </Link>
+                          <Link to={`/print/id-card/${s.id}?bid=${id}`} className="text-xs text-[#FF9933] hover:underline inline-flex items-center gap-1" data-testid={`idcard-${s.id}`}>
+                            <IdCard className="w-3 h-3" /> ID
+                          </Link>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              {/* 3. Suchana last */}
+              {p.suchana && (
+                <div className="px-5 py-3 border-t border-[#E5E7EB] bg-[#FF9933]/5 text-xs">
+                  <span className="font-bold text-[#B36B22] uppercase tracking-wider">Suchana / सूचना: </span>
+                  <span className="text-[#0A0A0A]">{p.suchana}</span>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {/* QR Modal */}
