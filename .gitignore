@@ -87,3 +87,12 @@ Bandobast.exe
 desktop/dist/BuldhanaBandobast-Portable-v1.0.0.zip
 desktop/node_modules/electron/dist/electron
 frontend/node_modules/.cache/default-development/0.pack
+-e 
+# Environment and credential files
+.env
+.env.*
+*.env
+credentials.json
+*.pem
+*.key
+.credentials
