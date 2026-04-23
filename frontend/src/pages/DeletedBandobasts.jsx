@@ -63,13 +63,11 @@ export default function DeletedBandobasts() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {loading && (
+            {loading ? (
               <TableRow><TableCell colSpan={5} className="text-center py-8 text-[#6B7280]">Loading...</TableCell></TableRow>
-            )}
-            {!loading && items.length === 0 && (
+            ) : items.length === 0 ? (
               <TableRow><TableCell colSpan={5} className="text-center py-8 text-[#6B7280]">No deleted bandobasts.</TableCell></TableRow>
-            )}
-            {items.map((b) => (
+            ) : items.map((b) => (
               <TableRow key={b.id} data-testid={`deleted-row-${b.id}`}>
                 <TableCell className="font-semibold">{b.year}</TableCell>
                 <TableCell>{new Date(b.date).toLocaleDateString()}</TableCell>

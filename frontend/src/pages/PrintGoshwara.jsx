@@ -6,11 +6,23 @@ import { Shield, Printer, Download } from "lucide-react";
 export default function PrintGoshwara() {
   const { id } = useParams();
   const [data, setData] = useState(null);
+  const [error, setError] = useState(false);
   useEffect(() => {
-    api.get(`/bandobasts/${id}/goshwara`).then((r) => setData(r.data));
+    api.get(`/bandobasts/${id}/goshwara`).then((r) => setData(r.data)).catch(() => setError(true));
   }, [id]);
 
-  if (!data) return <div className="p-8">Loading...</div>;
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6 bg-white">
+        <div className="max-w-md w-full bg-white border border-[#E5E7EB] rounded-md shadow p-6 text-center">
+          <div className="text-4xl font-display font-black text-[#FF9933]">404</div>
+          <h2 className="mt-2 font-display font-bold text-lg">Bandobast not found</h2>
+          <button onClick={() => window.close()} className="mt-4 bg-[#2E3192] hover:bg-[#202266] text-white font-semibold rounded-md px-4 py-2">Close</button>
+        </div>
+      </div>
+    );
+  }
+  if (!data) return <div className="min-h-screen flex items-center justify-center text-[#6B7280]">Loading...</div>;
   const b = data.bandobast;
 
   return (

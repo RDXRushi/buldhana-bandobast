@@ -8,6 +8,7 @@ export default function PrintIDCard() {
   const [params] = useSearchParams();
   const bid = params.get("bid");
   const [s, setS] = useState(null);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -20,13 +21,25 @@ export default function PrintIDCard() {
           setS(data);
         }
       } catch {
-        setS(null);
+        setError(true);
       }
     };
     load();
   }, [staffId, bid]);
 
-  if (!s) return <div className="p-8">Loading...</div>;
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6 bg-[#F4F5F7]">
+        <div className="max-w-md w-full bg-white border border-[#E5E7EB] rounded-md shadow p-6 text-center">
+          <div className="text-4xl font-display font-black text-[#FF9933]">404</div>
+          <h2 className="mt-2 font-display font-bold text-lg">Staff not found</h2>
+          <p className="mt-1 text-sm text-[#6B7280]">This staff record does not exist or was removed.</p>
+          <button onClick={() => window.close()} className="mt-4 bg-[#2E3192] hover:bg-[#202266] text-white font-semibold rounded-md px-4 py-2">Close</button>
+        </div>
+      </div>
+    );
+  }
+  if (!s) return <div className="min-h-screen flex items-center justify-center text-[#6B7280]">Loading...</div>;
 
   return (
     <div className="min-h-screen bg-[#F4F5F7] p-8 flex flex-col items-center">

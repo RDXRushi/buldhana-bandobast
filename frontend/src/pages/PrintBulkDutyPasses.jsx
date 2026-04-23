@@ -6,12 +6,14 @@ import { Shield, Printer } from "lucide-react";
 export default function PrintBulkDutyPasses() {
   const { bid } = useParams();
   const [data, setData] = useState(null);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
-    api.get(`/bandobasts/${bid}/goshwara`).then((r) => setData(r.data));
+    api.get(`/bandobasts/${bid}/goshwara`).then((r) => setData(r.data)).catch(() => setError(true));
   }, [bid]);
 
-  if (!data) return <div className="p-8">Loading...</div>;
+  if (error) return <div className="min-h-screen flex items-center justify-center p-6"><div className="max-w-md bg-white border rounded-md p-6 text-center"><div className="text-3xl font-black text-[#FF9933]">404</div><p className="mt-2 font-semibold">Bandobast not found</p></div></div>;
+  if (!data) return <div className="min-h-screen flex items-center justify-center text-[#6B7280]">Loading...</div>;
   const b = data.bandobast;
 
   // Flatten: one pass per (point, staff)

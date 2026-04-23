@@ -201,19 +201,17 @@ export default function Dashboard() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {loading && (
+              {loading ? (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center py-8 text-[#6B7280]">Loading...</TableCell>
                 </TableRow>
-              )}
-              {!loading && bandobasts.length === 0 && (
+              ) : bandobasts.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center py-8 text-[#6B7280]">
                     No bandobasts yet. <Link to="/bandobast/new" className="text-[#2E3192] font-semibold underline">Create one</Link>
                   </TableCell>
                 </TableRow>
-              )}
-              {bandobasts.map((b) => (
+              ) : bandobasts.map((b) => (
                 <TableRow key={b.id} data-testid={`bandobast-row-${b.id}`}>
                   <TableCell className="font-semibold">{b.year}</TableCell>
                   <TableCell>{new Date(b.date).toLocaleDateString()}</TableCell>

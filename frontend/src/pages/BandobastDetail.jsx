@@ -25,14 +25,28 @@ export default function BandobastDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [data, setData] = useState(null);
+  const [error, setError] = useState(false);
   const [qrPoint, setQrPoint] = useState(null);
 
   const load = async () => {
-    const { data } = await api.get(`/bandobasts/${id}/goshwara`);
-    setData(data);
+    try {
+      const { data } = await api.get(`/bandobasts/${id}/goshwara`);
+      setData(data);
+    } catch {
+      setError(true);
+    }
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [id]);
 
+  if (error) {
+    return (
+      <div className="max-w-md mx-auto mt-12 bg-white border border-[#E5E7EB] rounded-md shadow p-6 text-center">
+        <div className="text-3xl font-display font-black text-[#FF9933]">404</div>
+        <h2 className="mt-2 font-display font-bold text-lg">Bandobast not found</h2>
+        <button onClick={() => navigate("/")} className="mt-4 bg-[#2E3192] hover:bg-[#202266] text-white font-semibold rounded-md px-4 py-2">Back to Dashboard</button>
+      </div>
+    );
+  }
   if (!data) return <div className="p-8 text-[#6B7280]">Loading...</div>;
   const b = data.bandobast;
 
