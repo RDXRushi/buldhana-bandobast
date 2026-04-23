@@ -1,18 +1,204 @@
 const { app, BrowserWindow, Menu, dialog, shell } = require("electron");
 const path = require("path");
-const { startServer } = require("./server");
+const fs = require("fs");
+const { spawn } = require("child_process");
+const http = require("http");
+const net = require("net");
 
 let mainWindow;
-let serverInfo; // { port, close }
+let mongoProc = null;
+let serverProc = null;
+let serverPort = 38017;
+let mongoPort = 27777;
 
 // Allow unlimited memory (max for Node 20 = 8 GB on x64)
 app.commandLine.appendSwitch("js-flags", "--max-old-space-size=8192");
 app.commandLine.appendSwitch("enable-features", "SharedArrayBuffer");
 
+// ---------------------------------------------------------------------------
+// Path helpers
+// ---------------------------------------------------------------------------
+
+const isPackaged = app.isPackaged;
+const IS_WIN = process.platform === "win32";
+const EXE_EXT = IS_WIN ? ".exe" : "";
+
+// In dev: resources live at /app/desktop/resources/*
+// In packaged build: electron-builder places extraResources at process.resourcesPath
+function resourcesRoot() {
+  if (isPackaged) return process.resourcesPath;
+  return path.join(__dirname, "resources");
+}
+
+function mongodBinary() {
+  return path.join(resourcesRoot(), "mongodb", "bin", `mongod${EXE_EXT}`);
+}
+
+function serverBinary() {
+  return path.join(resourcesRoot(), "server", `bandobast-server${EXE_EXT}`);
+}
+
+// ---------------------------------------------------------------------------
+// Port & health helpers
+// ---------------------------------------------------------------------------
+
+function findFreePort(start) {
+  return new Promise((resolve) => {
+    const tryPort = (p) => {
+      const srv = net.createServer();
+      srv.once("error", () => tryPort(p + 1));
+      srv.once("listening", () => {
+        srv.close(() => resolve(p));
+      });
+      srv.listen(p, "127.0.0.1");
+    };
+    tryPort(start);
+  });
+}
+
+function waitForHttp(url, timeoutMs = 30000) {
+  const deadline = Date.now() + timeoutMs;
+  return new Promise((resolve, reject) => {
+    const tick = () => {
+      const req = http.get(url, (res) => {
+        res.resume();
+        if (res.statusCode && res.statusCode < 500) return resolve(true);
+        if (Date.now() > deadline) return reject(new Error("Server did not become ready"));
+        setTimeout(tick, 400);
+      });
+      req.on("error", () => {
+        if (Date.now() > deadline) return reject(new Error("Server did not become ready"));
+        setTimeout(tick, 400);
+      });
+      req.setTimeout(2000, () => req.destroy());
+    };
+    tick();
+  });
+}
+
+function waitForTcp(host, port, timeoutMs = 30000) {
+  const deadline = Date.now() + timeoutMs;
+  return new Promise((resolve, reject) => {
+    const tick = () => {
+      const sock = net.connect(port, host);
+      sock.once("connect", () => {
+        sock.end();
+        resolve(true);
+      });
+      sock.once("error", () => {
+        if (Date.now() > deadline) return reject(new Error("MongoDB not reachable"));
+        setTimeout(tick, 400);
+      });
+      sock.setTimeout(1500, () => sock.destroy());
+    };
+    tick();
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Spawning services
+// ---------------------------------------------------------------------------
+
+async function startMongo(userDataDir) {
+  const bin = mongodBinary();
+  if (!fs.existsSync(bin)) {
+    throw new Error(
+      `Bundled MongoDB binary not found at:\n${bin}\n\n` +
+      `Run build-windows.ps1 or the build steps in BUILD_WINDOWS.md first.`
+    );
+  }
+  const dbDir = path.join(userDataDir, "mongo-data");
+  const logDir = path.join(userDataDir, "logs");
+  fs.mkdirSync(dbDir, { recursive: true });
+  fs.mkdirSync(logDir, { recursive: true });
+  const logFile = path.join(logDir, "mongod.log");
+
+  mongoPort = await findFreePort(27777);
+
+  const args = [
+    "--port", String(mongoPort),
+    "--bind_ip", "127.0.0.1",
+    "--dbpath", dbDir,
+    "--logpath", logFile,
+    "--logappend",
+    "--quiet",
+    "--journal",
+  ];
+  mongoProc = spawn(bin, args, {
+    cwd: path.dirname(bin),
+    windowsHide: true,
+    stdio: ["ignore", "ignore", "pipe"],
+  });
+  mongoProc.on("exit", (code) => {
+    console.log(`mongod exited (${code})`);
+    mongoProc = null;
+  });
+
+  await waitForTcp("127.0.0.1", mongoPort, 30000);
+}
+
+async function startBackend(userDataDir) {
+  const bin = serverBinary();
+  if (!fs.existsSync(bin)) {
+    throw new Error(
+      `Bundled backend binary not found at:\n${bin}\n\n` +
+      `Run build-windows.ps1 to build it with PyInstaller.`
+    );
+  }
+  serverPort = await findFreePort(38017);
+  const env = {
+    ...process.env,
+    HOST: "127.0.0.1",
+    PORT: String(serverPort),
+    MONGO_URL: `mongodb://127.0.0.1:${mongoPort}`,
+    DB_NAME: "buldhana_bandobast",
+    CORS_ORIGINS: "*",
+    APP_DATA_DIR: userDataDir,
+  };
+  const logFile = path.join(userDataDir, "logs", "backend.log");
+  fs.mkdirSync(path.dirname(logFile), { recursive: true });
+  const logStream = fs.createWriteStream(logFile, { flags: "a" });
+
+  serverProc = spawn(bin, [], {
+    cwd: path.dirname(bin),
+    env,
+    windowsHide: true,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  serverProc.stdout.pipe(logStream);
+  serverProc.stderr.pipe(logStream);
+  serverProc.on("exit", (code) => {
+    console.log(`backend exited (${code})`);
+    serverProc = null;
+  });
+
+  await waitForHttp(`http://127.0.0.1:${serverPort}/_desktop/health`, 60000);
+}
+
+function stopServices() {
+  try { if (serverProc) serverProc.kill(); } catch (e) {}
+  try { if (mongoProc) mongoProc.kill(); } catch (e) {}
+}
+
+// ---------------------------------------------------------------------------
+// Window
+// ---------------------------------------------------------------------------
+
 async function createWindow() {
-  // Data directory inside user's AppData/Roaming
   const userData = app.getPath("userData");
-  serverInfo = await startServer(userData);
+  fs.mkdirSync(userData, { recursive: true });
+
+  try {
+    await startMongo(userData);
+    await startBackend(userData);
+  } catch (err) {
+    dialog.showErrorBox(
+      "Buldhana Bandobast — Startup Failed",
+      String(err && err.message ? err.message : err)
+    );
+    app.quit();
+    return;
+  }
 
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -28,11 +214,10 @@ async function createWindow() {
     },
   });
 
-  const url = `http://127.0.0.1:${serverInfo.port}`;
+  const url = `http://127.0.0.1:${serverPort}`;
   await mainWindow.loadURL(url);
   mainWindow.once("ready-to-show", () => mainWindow.show());
 
-  // Open external http links in default browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith("http://127.0.0.1:") || url.startsWith("http://localhost:")) {
       return { action: "allow" };
@@ -45,9 +230,10 @@ async function createWindow() {
     {
       label: "File",
       submenu: [
+        { label: "Open Data Folder", click: () => shell.openPath(userData) },
         {
-          label: "Open Data Folder",
-          click: () => shell.openPath(userData),
+          label: "Open Logs Folder",
+          click: () => shell.openPath(path.join(userData, "logs")),
         },
         { type: "separator" },
         { role: "quit" },
@@ -75,7 +261,12 @@ async function createWindow() {
               type: "info",
               title: "Buldhana Police Bandobast",
               message: "Digital Police Bandobast Management System",
-              detail: `Version ${app.getVersion()}\nOffline Desktop Edition\n© Buldhana District Police`,
+              detail:
+                `Version ${app.getVersion()}\n` +
+                `Offline Desktop Edition\n` +
+                `Backend port: ${serverPort}\n` +
+                `MongoDB port: ${mongoPort}\n` +
+                `© Buldhana District Police`,
             });
           },
         },
@@ -88,9 +279,11 @@ async function createWindow() {
 app.whenReady().then(createWindow);
 
 app.on("window-all-closed", () => {
-  if (serverInfo && serverInfo.close) serverInfo.close();
+  stopServices();
   if (process.platform !== "darwin") app.quit();
 });
+
+app.on("before-quit", stopServices);
 
 app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow();

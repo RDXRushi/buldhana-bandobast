@@ -1,52 +1,97 @@
 # Buldhana Police Bandobast — Windows Desktop (Offline, Standalone)
 
-## What you get
-A fully offline, standalone Windows desktop application of the Digital Police Bandobast Management System.
-- No internet required after installation
-- No server/database setup needed — uses local storage (~per-user)
-- All features from the web version included
+A fully offline, self-contained Windows desktop application of the Digital
+Police Bandobast Management System. No internet. No server. No separate
+database install. Everything the web version does — available on a single
+laptop.
+
+---
+
+## Quick start (for the end user)
+
+### Option A — Installer (recommended)
+1. Double-click **`BuldhanaBandobast-Setup-1.0.0.exe`**.
+2. Choose an install location (or accept the default).
+3. The installer creates a desktop shortcut and Start-menu entry.
+4. Launch **“Buldhana Bandobast”** → the app opens in ~5 seconds.
+
+### Option B — Portable (no install)
+1. Double-click **`BuldhanaBandobast-Portable-1.0.0.exe`**.
+2. Windows may show **“Windows protected your PC”** → click
+   **More info → Run anyway** (normal for unsigned apps).
+3. The app window opens.
+
+Default demo login: **`admin` / `admin`**
+
+---
 
 ## System requirements
 - Windows 10 or 11 (64-bit)
-- ~300 MB free disk space
-- 4 GB RAM recommended (app supports up to 8 GB heap)
+- ~500 MB free disk space
+- 4 GB RAM recommended
 
-## How to run (Portable — no install)
-1. Download `BuldhanaBandobast-Portable-v1.0.0.zip`
-2. Right-click → **Extract All...** to any folder (e.g., `C:\BuldhanaBandobast`)
-3. Inside the extracted folder, double-click **`Buldhana Police Bandobast.exe`**
-4. On first run Windows may show **"Windows protected your PC"** — click **More info → Run anyway** (normal for unsigned apps)
-5. The app window opens with the same login screen as the web version. Default demo credentials: `admin` / `admin`
+---
 
 ## Where is your data stored?
-All bandobasts, staff, and equipment assignments are saved locally in:
 ```
-C:\Users\<YourName>\AppData\Roaming\buldhana-bandobast-desktop\bandobast-db.json
+C:\Users\<YourName>\AppData\Roaming\Buldhana Police Bandobast\
+ ├─ mongo-data\   ← your entire database (bandobasts, staff, photos, etc.)
+ └─ logs\         ← diagnostic logs
 ```
-You can back this file up, copy it between machines, or restore it anytime.
-The File menu → "Open Data Folder" opens this location.
+Use **File → Open Data Folder** inside the app to open this location.
 
-## Features included (all offline)
-- Dashboard with calendar and bandobast list
-- Staff Management (Officer / Amaldar / Home Guard) with Excel import/template
-- 5-step Bandobast Wizard (Create → Points → Select → Allot → Deploy)
-- Out-of-District staff (scoped per bandobast)
-- Equipment assignment (1 item per staff per point)
-- QR codes containing full point briefing + Google Maps URL (scan offline works; opening the map link requires phone internet)
+### Backup / transfer to another PC
+1. Close the app.
+2. Copy the entire `mongo-data\` folder to the other PC (same path).
+3. Launch the app on the new PC — all your data appears.
+
+---
+
+## Features (all work offline)
+- Dashboard with calendar & bandobast list
+- Staff Management (Officer / Amaldar / Home Guard) with Excel import & templates
+- 5-Step Bandobast Wizard (Create → Points → Select → Allot → Deploy)
+- Out-of-District staff (scoped per bandobast) + Excel import
+- Equipment assignment (per staff, per point)
+- QR codes containing full point briefing + Google Maps URL
+  *(scanning works offline; opening the map link requires phone internet)*
 - Print ID Cards, Duty Passes, Goshwara (bulk + individual)
 - Excel roster export
 - Soft-delete + Restore + Permanent delete
 
-## Build from source (for developers)
-```bash
-cd /app/desktop
-yarn install
-yarn start   # dev run
-yarn dist    # build Windows installer (requires wine on Linux or native Windows)
+---
+
+## Troubleshooting
+
+**The app window is blank / never opens.**
+Check `%APPDATA%\Buldhana Police Bandobast\logs\backend.log` and
+`mongod.log`. Most common cause: another program is using port 27777 or
+38017 — the app auto-retries higher ports, but a zealous antivirus may
+block `mongod.exe`. Whitelist the install folder.
+
+**"Startup Failed: Bundled MongoDB binary not found"**
+The build was produced without running `build-windows.ps1`. Re-build
+following `BUILD_WINDOWS.md`.
+
+---
+
+## For developers
+
+See [`BUILD_WINDOWS.md`](./BUILD_WINDOWS.md) for the complete build pipeline
+(PyInstaller + portable MongoDB + Electron + electron-builder).
+
+### Architecture
 ```
-
-## Updating
-Simply replace the extracted folder with a newer portable build. Data in `AppData` is preserved.
-
-## Multi-PC usage
-Each Windows PC has its own local database. To sync between PCs, copy the JSON file from `AppData\Roaming\buldhana-bandobast-desktop\` — or, as a future enhancement, a sync server can be added.
+┌──────────────────────────────────────────────────────────────┐
+│  Electron window  (Chromium)                                 │
+│       │                                                      │
+│       └── loads  http://127.0.0.1:<serverPort>/              │
+│                                                              │
+│           └── bandobast-server.exe   (PyInstaller bundle)    │
+│                 ├── FastAPI + uvicorn                        │
+│                 ├── serves React build under /               │
+│                 └── talks to mongodb://127.0.0.1:<mongoPort> │
+│                                                              │
+│           └── mongod.exe  (portable, data in %APPDATA%)      │
+└──────────────────────────────────────────────────────────────┘
+```
