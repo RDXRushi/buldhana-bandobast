@@ -1,7 +1,7 @@
 const { app, BrowserWindow, Menu, dialog, shell } = require("electron");
 const path = require("path");
 const fs = require("fs");
-const { spawn } = require("child_process");
+const { spawn, execFileSync } = require("child_process");
 const http = require("http");
 const net = require("net");
 
@@ -10,6 +10,19 @@ let mongoProc = null;
 let serverProc = null;
 let serverPort = 38017;
 let mongoPort = 27777;
+
+// Enforce single instance — prevents "zombie mongod" scenarios where a
+// second launch races with a still-running first instance's MongoDB.
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+}
+app.on("second-instance", () => {
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  }
+});
 
 // Allow unlimited memory (max for Node 20 = 8 GB on x64)
 app.commandLine.appendSwitch("js-flags", "--max-old-space-size=8192");
@@ -41,6 +54,40 @@ function serverBinary() {
 // ---------------------------------------------------------------------------
 // Port & health helpers
 // ---------------------------------------------------------------------------
+
+// Windows-only: forcibly kill all leftover mongod.exe / bandobast-server.exe
+// processes from a previous crashed run. Node's process.kill() is unreliable
+// on Windows — taskkill /F is the only thing that works consistently.
+function killStaleProcesses() {
+  if (!IS_WIN) return;
+  const targets = ["mongod.exe", "bandobast-server.exe"];
+  for (const name of targets) {
+    try {
+      execFileSync("taskkill", ["/F", "/T", "/IM", name], {
+        windowsHide: true,
+        stdio: "ignore",
+      });
+    } catch (_) {
+      // Nothing to kill — that's fine.
+    }
+  }
+}
+
+// Remove a stale mongod.lock file if no mongod is holding it. We already
+// killed all mongod.exe processes before calling this, so the lock is
+// definitely orphaned if present.
+function clearStaleDbLock(dbDir) {
+  const lockFile = path.join(dbDir, "mongod.lock");
+  try {
+    if (fs.existsSync(lockFile)) {
+      fs.unlinkSync(lockFile);
+    }
+  } catch (_) {
+    // Lock still held by a running process — killStaleProcesses should
+    // have freed it. Ignore; mongod will refuse to start and surface
+    // the correct error in its log.
+  }
+}
 
 function findFreePort(start) {
   return new Promise((resolve) => {
@@ -112,7 +159,11 @@ async function startMongo(userDataDir) {
   fs.mkdirSync(dbDir, { recursive: true });
   fs.mkdirSync(logDir, { recursive: true });
   const logFile = path.join(logDir, "mongod.log");
-  // Fresh log each run so error dialog shows the CURRENT run's error.
+
+  // Clean slate: kill any zombie mongod from a previous crashed run,
+  // remove the orphaned lock, and truncate the log for this session.
+  killStaleProcesses();
+  clearStaleDbLock(dbDir);
   try { if (fs.existsSync(logFile)) fs.unlinkSync(logFile); } catch (_) {}
 
   mongoPort = await findFreePort(27777);
@@ -213,8 +264,11 @@ async function startBackend(userDataDir) {
 }
 
 function stopServices() {
+  // Best-effort graceful kill first
   try { if (serverProc) serverProc.kill(); } catch (e) {}
   try { if (mongoProc) mongoProc.kill(); } catch (e) {}
+  // Then the ONLY thing that reliably works on Windows: taskkill /F
+  killStaleProcesses();
 }
 
 // ---------------------------------------------------------------------------
@@ -321,6 +375,14 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", stopServices);
+app.on("will-quit", stopServices);
+app.on("quit", stopServices);
+process.on("exit", () => { try { killStaleProcesses(); } catch (_) {} });
+process.on("SIGINT", () => { stopServices(); process.exit(0); });
+process.on("uncaughtException", (err) => {
+  console.error("uncaughtException:", err);
+  stopServices();
+});
 
 app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
