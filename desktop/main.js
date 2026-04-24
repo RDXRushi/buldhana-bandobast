@@ -112,6 +112,8 @@ async function startMongo(userDataDir) {
   fs.mkdirSync(dbDir, { recursive: true });
   fs.mkdirSync(logDir, { recursive: true });
   const logFile = path.join(logDir, "mongod.log");
+  // Fresh log each run so error dialog shows the CURRENT run's error.
+  try { if (fs.existsSync(logFile)) fs.unlinkSync(logFile); } catch (_) {}
 
   mongoPort = await findFreePort(27777);
 
@@ -120,14 +122,24 @@ async function startMongo(userDataDir) {
     "--bind_ip", "127.0.0.1",
     "--dbpath", dbDir,
     "--logpath", logFile,
-    "--logappend",
-    "--quiet",
   ];
   mongoProc = spawn(bin, args, {
-    cwd: path.dirname(bin),
+    // cwd MUST be a user-writable folder. mongod writes transient files
+    // (WiredTigerHS.wt locks etc.) relative to cwd during listener startup.
+    // Running from Program Files\...\bin (read-only) causes silent exit.
+    cwd: userDataDir,
     windowsHide: true,
-    stdio: ["ignore", "ignore", "pipe"],
+    stdio: ["ignore", "pipe", "pipe"],
   });
+  // Drain stdout/stderr into our own fallback log so early crash messages
+  // (before --logpath is opened) are never lost.
+  const fallback = fs.createWriteStream(
+    path.join(logDir, "mongod-stdio.log"),
+    { flags: "w" }
+  );
+  mongoProc.stdout.pipe(fallback);
+  mongoProc.stderr.pipe(fallback);
+
   let earlyExitCode = null;
   mongoProc.on("exit", (code) => {
     console.log(`mongod exited (${code})`);
@@ -136,21 +148,28 @@ async function startMongo(userDataDir) {
   });
 
   try {
-    await waitForTcp("127.0.0.1", mongoPort, 30000);
+    await waitForTcp("127.0.0.1", mongoPort, 60000);
   } catch (err) {
-    // mongod never opened the port — surface the log so the user can see why.
-    let tail = "";
-    try {
-      if (fs.existsSync(logFile)) {
-        const buf = fs.readFileSync(logFile, "utf8");
-        tail = buf.split("\n").slice(-30).join("\n");
-      }
-    } catch (_) {}
+    // Collect last 120 lines from BOTH logs.
+    const tail = (p, n) => {
+      try {
+        if (!fs.existsSync(p)) return "";
+        const buf = fs.readFileSync(p, "utf8");
+        return buf.split("\n").slice(-n).join("\n");
+      } catch (_) { return ""; }
+    };
+    const mainTail   = tail(logFile, 120);
+    const stdioTail  = tail(path.join(logDir, "mongod-stdio.log"), 40);
     const reason = earlyExitCode !== null
       ? `mongod.exe exited with code ${earlyExitCode} before opening port ${mongoPort}.`
-      : `mongod.exe did not open port ${mongoPort} within 30s.`;
+      : `mongod.exe did not open port ${mongoPort} within 60s.`;
+    // Auto-open the logs folder so the user can see the full file.
+    try { shell.openPath(logDir); } catch (_) {}
     throw new Error(
-      `${reason}\n\nLast lines of mongod.log:\n${tail || "(no log)"}`
+      `${reason}\n\n` +
+      `Full logs opened in Explorer: ${logDir}\n\n` +
+      `=== tail of mongod.log ===\n${mainTail || "(empty)"}\n\n` +
+      `=== tail of mongod-stdio.log ===\n${stdioTail || "(empty)"}`
     );
   }
 }
