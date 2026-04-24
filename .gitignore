@@ -141,3 +141,7 @@ credentials.json
 *.pem
 *.key
 .credentials
+frontend/build/BuldhanaBandobast-Portable-v1.0.0.zip
+frontend/android/app/src/main/assets/public/BuldhanaBandobast-Portable-v1.0.0.zip
+frontend/node_modules/.cache/default-development/6.pack
+frontend/node_modules/.cache/default-development/2.pack

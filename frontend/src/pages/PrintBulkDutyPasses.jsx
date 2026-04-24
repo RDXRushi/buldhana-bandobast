@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api, BACKEND_URL } from "../lib/api";
+import PointQR from "../components/PointQR";
 import { Shield, Printer } from "lucide-react";
 
 export default function PrintBulkDutyPasses() {
@@ -88,8 +89,9 @@ export default function PrintBulkDutyPasses() {
                   })()}
                 </div>
                 <div className="flex flex-col items-center gap-1">
-                  <img
-                    src={`${BACKEND_URL}/api/bandobasts/${bid}/points/${point.id}/qr`}
+                  <PointQR
+                    bid={bid}
+                    pid={point.id}
                     alt="QR"
                     className="w-24 h-24 border border-[#E5E7EB] rounded"
                   />

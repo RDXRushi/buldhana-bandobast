@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { api, BACKEND_URL } from "../lib/api";
+import { api, BACKEND_URL, downloadStaffWiseExcel } from "../lib/api";
+import PointQR, { downloadPointQR } from "../components/PointQR";
 import { L } from "../lib/i18n";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
@@ -106,7 +107,7 @@ export default function BandobastDetail() {
             </Button>
             <Button
               variant="outline"
-              onClick={() => window.open(`${process.env.REACT_APP_BACKEND_URL}/api/bandobasts/${id}/export/staff-wise`, "_blank")}
+              onClick={() => downloadStaffWiseExcel(id)}
               data-testid="export-staff-wise-btn"
             >
               <Download className="w-4 h-4 mr-2" /> Excel Roster
@@ -221,12 +222,13 @@ export default function BandobastDetail() {
           </DialogHeader>
           {qrPoint && (
             <div className="flex flex-col items-center gap-3">
-              <img
-                src={`${BACKEND_URL}/api/bandobasts/${id}/points/${qrPoint.id}/qr`}
+              <PointQR
+                bid={id}
+                pid={qrPoint.id}
                 alt="QR"
                 className="w-64 h-64 border border-[#E5E7EB] rounded"
               />
-              <Button variant="outline" onClick={() => window.open(`${BACKEND_URL}/api/bandobasts/${id}/points/${qrPoint.id}/qr`, "_blank")}>
+              <Button variant="outline" onClick={() => downloadPointQR(id, qrPoint.id, `${qrPoint.point_name}.png`)}>
                 <Download className="w-4 h-4 mr-2" /> Download
               </Button>
             </div>

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Buldhana Bandobast</string>
+    <string name="title_activity_main">Buldhana Bandobast</string>
+    <string name="package_name">in.buldhana.policebandobast</string>
+    <string name="custom_url_scheme">in.buldhana.policebandobast</string>
+</resources>

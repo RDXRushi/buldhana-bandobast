@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { api, BACKEND_URL, RANKS_BY_TYPE, STAFF_TYPE_LABELS } from "../lib/api";
+import { api, BACKEND_URL, RANKS_BY_TYPE, STAFF_TYPE_LABELS, downloadStaffTemplate } from "../lib/api";
 import { L } from "../lib/i18n";
 import {
   Tabs,
@@ -76,7 +76,7 @@ export default function StaffManagement() {
   };
 
   const downloadTemplate = () => {
-    window.open(`${BACKEND_URL}/api/staff-template/${activeType}`, "_blank");
+    downloadStaffTemplate(activeType);
   };
 
   const handleImport = async (e) => {

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { api, BACKEND_URL, EQUIPMENT_OPTIONS, RANKS_BY_TYPE, STAFF_TYPE_LABELS } from "../lib/api";
+import { api, BACKEND_URL, EQUIPMENT_OPTIONS, RANKS_BY_TYPE, STAFF_TYPE_LABELS, downloadStaffTemplate, downloadPointTemplate, downloadStaffWiseExcel } from "../lib/api";
 import { L } from "../lib/i18n";
 import Stepper from "../components/Stepper";
 import { Input } from "../components/ui/input";
@@ -274,7 +274,7 @@ function PointsStep({ bandobast, bid, onRefresh }) {
   };
 
   const downloadTemplate = () => {
-    window.open(`${BACKEND_URL}/api/bandobast-point-template`, "_blank");
+    downloadPointTemplate();
   };
 
   const handleImport = async (e) => {
@@ -499,7 +499,7 @@ function SelectStaffStep({ bandobast, bid, staff, allStaff, onRefresh, registerS
   // Out-of-district helpers
   const outStaff = bandobast?.other_district_staff || [];
   const downloadOutTemplate = (type) => {
-    window.open(`${BACKEND_URL}/api/staff-template/${type}`, "_blank");
+    downloadStaffTemplate(type);
   };
   const handleOutImport = async (type, e) => {
     const file = e.target.files[0];
@@ -1438,7 +1438,7 @@ function DeployStep({ bandobast, bid, staff, onRefresh, navigate }) {
             </div>
             <Button
               variant="outline"
-              onClick={() => window.open(`${BACKEND_URL}/api/bandobasts/${bid}/export/staff-wise`, "_blank")}
+              onClick={() => downloadStaffWiseExcel(bid)}
               data-testid="download-staff-wise-btn"
             >
               <Download className="w-4 h-4 mr-2" /> Download Excel
