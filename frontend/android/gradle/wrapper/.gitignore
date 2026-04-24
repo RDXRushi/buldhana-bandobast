@@ -1,0 +1,3 @@
+# Ensure gradle-wrapper.jar is never excluded.
+# This is a critical 63KB binary required to bootstrap Gradle in CI.
+!gradle-wrapper.jar

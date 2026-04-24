@@ -58,10 +58,29 @@ jobs:
         working-directory: frontend
         run: npx --yes cap sync android
 
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
       - name: Build debug APK (Gradle)
         working-directory: frontend/android
         run: |
           chmod +x ./gradlew
+          # Ensure gradle-wrapper.jar exists. Some repo pushes drop binary
+          # assets — regenerate it with an installed Gradle if missing.
+          if [ ! -s gradle/wrapper/gradle-wrapper.jar ]; then
+            echo "gradle-wrapper.jar missing — regenerating..."
+            GRADLE_VER=$(grep distributionUrl gradle/wrapper/gradle-wrapper.properties \
+              | sed -E 's/.*gradle-([0-9.]+)-.*/\1/')
+            echo "Target Gradle version: $GRADLE_VER"
+            # Download the specified Gradle distribution and run
+            # `gradle wrapper` to materialize the correct wrapper jar.
+            curl -fsSL -o /tmp/gradle.zip \
+              "https://services.gradle.org/distributions/gradle-${GRADLE_VER}-bin.zip"
+            unzip -q /tmp/gradle.zip -d /tmp/gradle-dist
+            "/tmp/gradle-dist/gradle-${GRADLE_VER}/bin/gradle" \
+              wrapper --gradle-version "${GRADLE_VER}" --distribution-type bin
+            ls -la gradle/wrapper/
+          fi
           ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Rename + collect APK
