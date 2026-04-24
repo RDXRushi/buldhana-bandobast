@@ -30,10 +30,10 @@ Duty Pass, ID Cards with QR).
   fake-indexeddb). Capacitor Android project generated. Workflow ready.
   **Pending:** user pushes the commits to GitHub so Actions can build.
 
-### 2.3 Desktop edition (offline Windows — earlier in this task)
-- **Stack:** Electron + PyInstaller-bundled FastAPI + portable MongoDB.
-- **Status:** Complete but user hit runtime issues (zombie mongod processes
-  on Windows). Pivoted to Android as the preferred offline target.
+### 2.3 Desktop edition (Windows) — DISCONTINUED
+- Attempted Electron + PyInstaller build. User ran into recurring runtime
+  issues (zombie mongod processes) and chose Android instead.
+- Windows workflow and code removed from this branch for clarity.
 
 ---
 

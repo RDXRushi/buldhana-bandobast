@@ -29,20 +29,20 @@ jobs:
       - name: Install Yarn
         run: npm install -g yarn
 
-      - name: Set up JDK 21
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: "temurin"
-          java-version: "21"
+          java-version: "17"
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: "platforms;android-35 build-tools;35.0.0"
+          packages: "platforms;android-34 build-tools;34.0.0"
 
       - name: Install frontend deps
         working-directory: frontend
-        run: yarn install --frozen-lockfile
+        run: yarn install --network-timeout 100000
 
       - name: Build React with LOCAL (offline) backend shim
         working-directory: frontend
@@ -51,22 +51,18 @@ jobs:
           REACT_APP_USE_LOCAL: "true"
           CI: "false"
           PUBLIC_URL: "."
+          GENERATE_SOURCEMAP: "false"
         run: yarn build
 
-      - name: Initialize Capacitor Android project
+      - name: Sync Capacitor → Android
         working-directory: frontend
-        run: |
-          # Capacitor CLI is bundled in repo devDependencies; just sync the
-          # generated web assets + config into the already-committed android/
-          # folder. No `cap add` needed — that's done in the repo.
-          yarn add --dev @capacitor/cli@6.2.1
-          npx cap sync android
+        run: npx --yes cap sync android
 
       - name: Build debug APK (Gradle)
         working-directory: frontend/android
         run: |
           chmod +x ./gradlew
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Rename + collect APK
         working-directory: frontend/android
