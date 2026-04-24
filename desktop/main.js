@@ -122,19 +122,37 @@ async function startMongo(userDataDir) {
     "--logpath", logFile,
     "--logappend",
     "--quiet",
-    "--journal",
   ];
   mongoProc = spawn(bin, args, {
     cwd: path.dirname(bin),
     windowsHide: true,
     stdio: ["ignore", "ignore", "pipe"],
   });
+  let earlyExitCode = null;
   mongoProc.on("exit", (code) => {
     console.log(`mongod exited (${code})`);
+    earlyExitCode = code;
     mongoProc = null;
   });
 
-  await waitForTcp("127.0.0.1", mongoPort, 30000);
+  try {
+    await waitForTcp("127.0.0.1", mongoPort, 30000);
+  } catch (err) {
+    // mongod never opened the port — surface the log so the user can see why.
+    let tail = "";
+    try {
+      if (fs.existsSync(logFile)) {
+        const buf = fs.readFileSync(logFile, "utf8");
+        tail = buf.split("\n").slice(-30).join("\n");
+      }
+    } catch (_) {}
+    const reason = earlyExitCode !== null
+      ? `mongod.exe exited with code ${earlyExitCode} before opening port ${mongoPort}.`
+      : `mongod.exe did not open port ${mongoPort} within 30s.`;
+    throw new Error(
+      `${reason}\n\nLast lines of mongod.log:\n${tail || "(no log)"}`
+    );
+  }
 }
 
 async function startBackend(userDataDir) {

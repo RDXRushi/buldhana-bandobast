@@ -63,11 +63,12 @@ jobs:
           $src = Get-ChildItem -Path $tmp -Directory | Select-Object -First 1
           $dest = "desktop\resources\mongodb"
           New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          # Copy the whole bin folder (includes vcruntime/msvcp DLLs mongod needs).
+          # Trimming individual files is risky: missing DLLs => mongod crashes silently on launch.
           Copy-Item -Recurse -Force (Join-Path $src.FullName "bin") $dest
-          # Keep only mongod.exe + SSL/crypto DLLs to shrink installer
-          Get-ChildItem -Path "$dest\bin" -File | Where-Object {
-            $_.Name -ne "mongod.exe" -and $_.Name -notlike "*crypto*" -and $_.Name -notlike "*ssl*"
-          } | Remove-Item -Force -ErrorAction SilentlyContinue
+          # Remove only mongos.exe (sharding router, not needed for standalone).
+          Remove-Item -Force -ErrorAction SilentlyContinue "$dest\bin\mongos.exe"
+          Write-Host "MongoDB bin folder contents:"
           Get-ChildItem -Path "$dest\bin" | Format-Table Name, Length
 
       - name: Install Python backend deps + PyInstaller
