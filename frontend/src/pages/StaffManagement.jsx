@@ -39,9 +39,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
-import { Plus, Upload, Download, Search, Pencil, Trash2, Camera, IdCard, MoreVertical } from "lucide-react";
+import { Plus, Upload, Download, Search, Pencil, Trash2, Camera, IdCard, MoreVertical, CheckSquare, Square } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
+import { Checkbox } from "../components/ui/checkbox";
 
 const TYPES = ["officer", "amaldar", "home_guard"];
 
@@ -53,6 +54,7 @@ export default function StaffManagement() {
   const [loading, setLoading] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [selectedIds, setSelectedIds] = useState(new Set());
   const fileRef = useRef(null);
   const navigate = useNavigate();
 
@@ -63,10 +65,25 @@ export default function StaffManagement() {
     if (search) params.search = search;
     const { data } = await api.get("/staff", { params });
     setStaff(data);
+    setSelectedIds(new Set());           // reset selection on every load
     setLoading(false);
   };
 
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [activeType, rankFilter]);
+
+  const toggleOne = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const allSelected = staff.length > 0 && selectedIds.size === staff.length;
+  const someSelected = selectedIds.size > 0 && !allSelected;
+  const toggleAll = () => {
+    setSelectedIds(allSelected ? new Set() : new Set(staff.map((s) => s.id)));
+  };
 
   const handleDelete = async (id) => {
     if (!window.confirm("Delete this staff member?")) return;
@@ -75,20 +92,16 @@ export default function StaffManagement() {
     load();
   };
 
-  const handleDeleteAll = async () => {
-    const label = STAFF_TYPE_LABELS[activeType].en;
-    const c1 = window.confirm(
-      `⚠️ Delete ALL ${label} records?\n\nThis cannot be undone. Type confirmation will be asked next.`
-    );
-    if (!c1) return;
-    const word = window.prompt(`Type DELETE to confirm removing all ${label} records:`);
-    if (word !== "DELETE") {
-      toast.message("Cancelled");
+  const handleDeleteSelected = async () => {
+    const ids = [...selectedIds];
+    if (ids.length === 0) {
+      toast.message("No rows selected");
       return;
     }
+    if (!window.confirm(`Delete ${ids.length} selected staff record(s)? This cannot be undone.`)) return;
     try {
-      const { data } = await api.delete(`/staff/bulk/${activeType}`);
-      toast.success(`Deleted ${data.deleted} ${label} record(s)`);
+      const { data } = await api.post("/staff/bulk-delete", { ids });
+      toast.success(`Deleted ${data.deleted} record(s)`);
       load();
     } catch (err) {
       toast.error(err.response?.data?.detail || "Bulk delete failed");
@@ -182,11 +195,13 @@ export default function StaffManagement() {
                 </Button>
                 <Button
                   variant="outline"
-                  className="border-red-300 text-red-700 hover:bg-red-50"
-                  onClick={handleDeleteAll}
-                  data-testid="delete-all-btn"
+                  className="border-red-300 text-red-700 hover:bg-red-50 disabled:opacity-50"
+                  onClick={handleDeleteSelected}
+                  disabled={selectedIds.size === 0}
+                  data-testid="delete-selected-btn"
                 >
-                  <Trash2 className="w-4 h-4 mr-2" /> Delete All
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  {selectedIds.size > 0 ? `Delete Selected (${selectedIds.size})` : "Delete Selected"}
                 </Button>
               </div>
 
@@ -194,6 +209,14 @@ export default function StaffManagement() {
               <Table>
                 <TableHeader className="bg-[#F9FAFB]">
                   <TableRow>
+                    <TableHead className="w-10">
+                      <Checkbox
+                        checked={allSelected || (someSelected ? "indeterminate" : false)}
+                        onCheckedChange={toggleAll}
+                        aria-label="Select all"
+                        data-testid="select-all-checkbox"
+                      />
+                    </TableHead>
                     <TableHead className="w-12">Sr.</TableHead>
                     <TableHead>Photo</TableHead>
                     <TableHead>{L.rank}</TableHead>
@@ -209,13 +232,25 @@ export default function StaffManagement() {
                 </TableHeader>
                 <TableBody>
                   {loading && (
-                    <TableRow><TableCell colSpan={activeType === "officer" ? 10 : 11} className="text-center py-8 text-[#6B7280]">Loading...</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={activeType === "officer" ? 11 : 12} className="text-center py-8 text-[#6B7280]">Loading...</TableCell></TableRow>
                   )}
                   {!loading && staff.length === 0 && (
-                    <TableRow><TableCell colSpan={activeType === "officer" ? 10 : 11} className="text-center py-8 text-[#6B7280]">No staff yet. Click "Add Staff" to begin.</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={activeType === "officer" ? 11 : 12} className="text-center py-8 text-[#6B7280]">No staff yet. Click "Add Staff" to begin.</TableCell></TableRow>
                   )}
                   {staff.map((s, idx) => (
-                    <TableRow key={s.id} data-testid={`staff-row-${s.id}`}>
+                    <TableRow
+                      key={s.id}
+                      data-testid={`staff-row-${s.id}`}
+                      className={selectedIds.has(s.id) ? "bg-red-50/50" : ""}
+                    >
+                      <TableCell>
+                        <Checkbox
+                          checked={selectedIds.has(s.id)}
+                          onCheckedChange={() => toggleOne(s.id)}
+                          aria-label={`Select ${s.name}`}
+                          data-testid={`select-row-${s.id}`}
+                        />
+                      </TableCell>
                       <TableCell>{idx + 1}</TableCell>
                       <TableCell>
                         {s.photo ? (

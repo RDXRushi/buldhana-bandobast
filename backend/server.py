@@ -225,6 +225,20 @@ async def delete_all_staff_of_type(staff_type: StaffType):
     return {"ok": True, "deleted": res.deleted_count}
 
 
+class BulkDeleteRequest(BaseModel):
+    ids: List[str]
+
+
+@api_router.post("/staff/bulk-delete")
+async def bulk_delete_staff(payload: BulkDeleteRequest):
+    """Delete a specific list of staff members by id."""
+    ids = [i for i in (payload.ids or []) if i]
+    if not ids:
+        return {"ok": True, "deleted": 0}
+    res = await db.staff.delete_many({"id": {"$in": ids}})
+    return {"ok": True, "deleted": res.deleted_count}
+
+
 @api_router.get("/staff-template/{staff_type}")
 async def staff_template(staff_type: StaffType):
     wb = Workbook()
