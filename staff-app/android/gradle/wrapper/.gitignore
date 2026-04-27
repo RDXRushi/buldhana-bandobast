@@ -1,0 +1,2 @@
+# Force gradle-wrapper.jar to ship with the repo (some pushes drop binary files)
+!gradle-wrapper.jar

@@ -75,6 +75,26 @@ export default function StaffManagement() {
     load();
   };
 
+  const handleDeleteAll = async () => {
+    const label = STAFF_TYPE_LABELS[activeType].en;
+    const c1 = window.confirm(
+      `⚠️ Delete ALL ${label} records?\n\nThis cannot be undone. Type confirmation will be asked next.`
+    );
+    if (!c1) return;
+    const word = window.prompt(`Type DELETE to confirm removing all ${label} records:`);
+    if (word !== "DELETE") {
+      toast.message("Cancelled");
+      return;
+    }
+    try {
+      const { data } = await api.delete(`/staff/bulk/${activeType}`);
+      toast.success(`Deleted ${data.deleted} ${label} record(s)`);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Bulk delete failed");
+    }
+  };
+
   const downloadTemplate = () => {
     downloadStaffTemplate(activeType);
   };
@@ -159,6 +179,14 @@ export default function StaffManagement() {
                 <input type="file" ref={fileRef} accept=".xlsx" className="hidden" onChange={handleImport} />
                 <Button className="bg-[#2E3192] hover:bg-[#202266]" onClick={() => setAddOpen(true)} data-testid="add-staff-btn">
                   <Plus className="w-4 h-4 mr-2" /> {L.addStaff}
+                </Button>
+                <Button
+                  variant="outline"
+                  className="border-red-300 text-red-700 hover:bg-red-50"
+                  onClick={handleDeleteAll}
+                  data-testid="delete-all-btn"
+                >
+                  <Trash2 className="w-4 h-4 mr-2" /> Delete All
                 </Button>
               </div>
 

@@ -1,0 +1,16 @@
+{
+  "appId": "in.buldhana.policebandobast.staff",
+  "appName": "Buldhana Bandobast Staff",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "android": {
+    "allowMixedContent": true,
+    "backgroundColor": "#ffffff"
+  },
+  "plugins": {
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_notify",
+      "iconColor": "#FF9933"
+    }
+  }
+}

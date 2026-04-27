@@ -13,7 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "../components/ui/table";
-import { ChevronLeft, Download, Printer, QrCode, MapPin, IdCard, FileBarChart, Send, Pencil, Files } from "lucide-react";
+import { ChevronLeft, Download, Printer, QrCode, MapPin, IdCard, FileBarChart, Send, Pencil, Files, Bell } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -28,16 +28,38 @@ export default function BandobastDetail() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(false);
   const [qrPoint, setQrPoint] = useState(null);
+  const [alertStatus, setAlertStatus] = useState(null);
+  const [alerting, setAlerting] = useState(false);
 
   const load = async () => {
     try {
       const { data } = await api.get(`/bandobasts/${id}/goshwara`);
       setData(data);
+      try {
+        const r = await api.get(`/bandobasts/${id}/alert-status`);
+        setAlertStatus(r.data);
+      } catch (_) { /* not fatal */ }
     } catch {
       setError(true);
     }
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [id]);
+
+  const sendAlert = async () => {
+    if (!window.confirm("Send Bandobast Alert to all allotted staff with a valid mobile number?")) return;
+    setAlerting(true);
+    try {
+      const { data: r } = await api.post(`/bandobasts/${id}/alert`);
+      const msg = `Alerts queued: ${r.sent}` + (r.skipped_no_mobile ? ` · ${r.skipped_no_mobile} skipped (no mobile)` : "");
+      toast.success(msg);
+      const r2 = await api.get(`/bandobasts/${id}/alert-status`);
+      setAlertStatus(r2.data);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Alert failed");
+    } finally {
+      setAlerting(false);
+    }
+  };
 
   if (error) {
     return (
@@ -121,6 +143,48 @@ export default function BandobastDetail() {
             </Button>
           </div>
         </div>
+      </div>
+
+      {/* Bandobast Alert section */}
+      <div className="bg-white border border-[#E5E7EB] rounded-md p-5 shadow-sm mb-6" data-testid="bandobast-alert-section">
+        <div className="flex items-start justify-between flex-wrap gap-4">
+          <div className="flex items-start gap-3">
+            <div className="bg-[#FF9933]/15 text-[#FF9933] p-2 rounded">
+              <Bell className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="font-display font-bold text-lg">Bandobast Alert / बंदोबस्त सूचना</h2>
+              <p className="text-sm text-[#6B7280] mt-1 max-w-xl">
+                Push this bandobast to every allotted staff member's phone (via the Buldhana
+                Bandobast Staff app). They receive their point details, duty pass, ID card,
+                co-staff list and a Google Maps link for their point.
+              </p>
+              {alertStatus && (
+                <div className="mt-2 text-xs text-[#6B7280]">
+                  {alertStatus.last_alerted_at ? (
+                    <>Last sent: <strong>{new Date(alertStatus.last_alerted_at).toLocaleString()}</strong> · {alertStatus.seen}/{alertStatus.total} seen</>
+                  ) : (
+                    <>Not sent yet</>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+          <Button
+            className="bg-[#FF9933] hover:bg-[#E68A2E] text-white"
+            onClick={sendAlert}
+            disabled={alerting || b.status !== "deployed"}
+            data-testid="send-alert-btn"
+          >
+            <Bell className="w-4 h-4 mr-2" />
+            {alerting ? "Sending…" : alertStatus?.last_alerted_at ? "Re-send Alert" : "Send Alert"}
+          </Button>
+        </div>
+        {b.status !== "deployed" && (
+          <div className="mt-3 text-xs bg-yellow-50 border border-yellow-200 text-yellow-800 rounded px-3 py-2">
+            Deploy this bandobast first to enable alerts.
+          </div>
+        )}
       </div>
 
       {/* Points with goshwara */}

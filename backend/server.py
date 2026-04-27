@@ -218,6 +218,13 @@ async def delete_staff(staff_id: str):
     return {"ok": True}
 
 
+@api_router.delete("/staff/bulk/{staff_type}")
+async def delete_all_staff_of_type(staff_type: StaffType):
+    """Delete every staff member of the given type (officer/amaldar/home_guard)."""
+    res = await db.staff.delete_many({"staff_type": staff_type})
+    return {"ok": True, "deleted": res.deleted_count}
+
+
 @api_router.get("/staff-template/{staff_type}")
 async def staff_template(staff_type: StaffType):
     wb = Workbook()
@@ -928,6 +935,221 @@ async def export_staff_wise(bid: str):
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={safe_name}_amaldar_wise.xlsx"},
     )
+
+
+# ========================= BANDOBAST ALERT + STAFF APP =========================
+
+class AlertCreate(BaseModel):
+    pass  # body unused; bid in path
+
+
+def _normalize_mobile(m: str) -> str:
+    return "".join(ch for ch in (m or "") if ch.isdigit())[-10:]
+
+
+async def _resolve_staff_for_bandobast(b: dict, sid: str) -> Optional[dict]:
+    for s in (b.get("other_district_staff") or []):
+        if s.get("id") == sid:
+            return s
+    home = await db.staff.find_one({"id": sid}, {"_id": 0})
+    return home
+
+
+def _point_for_staff(b: dict, sid: str) -> Optional[dict]:
+    for p in (b.get("points") or []):
+        if sid in (b.get("allotments", {}).get(p["id"], []) or []):
+            return p
+    return None
+
+
+def _co_staff_ids(b: dict, point_id: str, exclude_sid: str) -> List[str]:
+    return [s for s in (b.get("allotments", {}).get(point_id, []) or []) if s != exclude_sid]
+
+
+@api_router.post("/bandobasts/{bid}/alert")
+async def send_bandobast_alert(bid: str):
+    """Mark every allotted staff with a pending alert for this bandobast."""
+    b = await db.bandobasts.find_one({"id": bid}, {"_id": 0})
+    if not b:
+        raise HTTPException(status_code=404, detail="Bandobast not found")
+    if b.get("status") != "deployed":
+        raise HTTPException(status_code=400, detail="Bandobast must be deployed before sending alerts")
+    allot = b.get("allotments") or {}
+    all_sids = set()
+    for sids in allot.values():
+        for s in sids:
+            all_sids.add(s)
+    if not all_sids:
+        return {"ok": True, "sent": 0, "skipped_no_mobile": 0}
+    sent = 0
+    skipped_no_mobile = 0
+    skipped_unknown = 0
+    now = datetime.now(timezone.utc).isoformat()
+    for sid in all_sids:
+        staff = await _resolve_staff_for_bandobast(b, sid)
+        if not staff:
+            skipped_unknown += 1
+            continue
+        mobile = _normalize_mobile(staff.get("mobile") or "")
+        if not mobile or len(mobile) != 10:
+            skipped_no_mobile += 1
+            continue
+        await db.alerts.update_one(
+            {"bandobast_id": bid, "staff_id": sid, "mobile": mobile},
+            {"$set": {
+                "bandobast_id": bid, "staff_id": sid, "mobile": mobile,
+                "bandobast_name": b.get("name", ""), "bandobast_date": b.get("date", ""),
+                "sent_at": now, "seen": False,
+            }},
+            upsert=True,
+        )
+        sent += 1
+    await db.bandobasts.update_one({"id": bid}, {"$set": {"last_alerted_at": now}})
+    return {"ok": True, "sent": sent, "skipped_no_mobile": skipped_no_mobile, "skipped_unknown": skipped_unknown}
+
+
+@api_router.get("/bandobasts/{bid}/alert-status")
+async def alert_status(bid: str):
+    b = await db.bandobasts.find_one({"id": bid}, {"_id": 0, "last_alerted_at": 1, "allotments": 1, "other_district_staff": 1})
+    if not b:
+        raise HTTPException(status_code=404, detail="Not found")
+    cnt = await db.alerts.count_documents({"bandobast_id": bid})
+    seen = await db.alerts.count_documents({"bandobast_id": bid, "seen": True})
+    return {"last_alerted_at": b.get("last_alerted_at"), "total": cnt, "seen": seen}
+
+
+# ----- Staff App (mobile-number-based) -----
+
+class StaffAppLogin(BaseModel):
+    mobile: str
+
+
+class StaffAppProfileUpdate(BaseModel):
+    name: Optional[str] = None
+    rank: Optional[str] = None
+    posting: Optional[str] = None
+    gender: Optional[str] = None
+    district: Optional[str] = None
+    category: Optional[str] = None
+    photo: Optional[str] = None  # base64 data url
+
+
+@api_router.post("/staff-app/login")
+async def staff_app_login(payload: StaffAppLogin):
+    mob = _normalize_mobile(payload.mobile)
+    if len(mob) != 10:
+        raise HTTPException(status_code=400, detail="Enter a valid 10-digit mobile number")
+    matches = []
+    async for s in db.staff.find({}, {"_id": 0}):
+        if _normalize_mobile(s.get("mobile") or "") == mob:
+            matches.append(s)
+    if not matches:
+        # Search OD staff inside bandobasts as a fallback
+        async for b in db.bandobasts.find({}, {"_id": 0, "other_district_staff": 1}):
+            for s in (b.get("other_district_staff") or []):
+                if _normalize_mobile(s.get("mobile") or "") == mob:
+                    matches.append(s)
+    if not matches:
+        raise HTTPException(status_code=404, detail="No staff found with this mobile number. Please contact admin.")
+    return {"ok": True, "mobile": mob, "staff": matches[0]}
+
+
+@api_router.get("/staff-app/me")
+async def staff_app_me(mobile: str):
+    mob = _normalize_mobile(mobile)
+    s = None
+    async for x in db.staff.find({}, {"_id": 0}):
+        if _normalize_mobile(x.get("mobile") or "") == mob:
+            s = x; break
+    if not s:
+        raise HTTPException(status_code=404, detail="Not found")
+    return s
+
+
+@api_router.patch("/staff-app/me")
+async def staff_app_update_me(mobile: str, payload: StaffAppProfileUpdate):
+    mob = _normalize_mobile(mobile)
+    s = None
+    async for x in db.staff.find({}, {"_id": 0}):
+        if _normalize_mobile(x.get("mobile") or "") == mob:
+            s = x; break
+    if not s:
+        raise HTTPException(status_code=404, detail="Not found")
+    update = {k: v for k, v in payload.model_dump().items() if v is not None}
+    update.pop("mobile", None)  # mobile is the auth key, never editable here
+    if update:
+        await db.staff.update_one({"id": s["id"]}, {"$set": update})
+    return await db.staff.find_one({"id": s["id"]}, {"_id": 0})
+
+
+@api_router.get("/staff-app/alerts")
+async def staff_app_alerts(mobile: str):
+    mob = _normalize_mobile(mobile)
+    cur = db.alerts.find({"mobile": mob}, {"_id": 0}).sort("sent_at", -1)
+    items = await cur.to_list(500)
+    return items
+
+
+@api_router.post("/staff-app/alerts/{bid}/seen")
+async def staff_app_mark_alert_seen(bid: str, mobile: str):
+    mob = _normalize_mobile(mobile)
+    await db.alerts.update_many({"bandobast_id": bid, "mobile": mob}, {"$set": {"seen": True}})
+    return {"ok": True}
+
+
+@api_router.get("/staff-app/bandobast/{bid}")
+async def staff_app_bandobast_detail(bid: str, mobile: str):
+    """
+    Returns everything the staff member needs in one call:
+    bandobast meta, their assigned point with map link, equipment, suchana, and
+    co-allotted staff at the same point.
+    """
+    mob = _normalize_mobile(mobile)
+    b = await db.bandobasts.find_one({"id": bid}, {"_id": 0})
+    if not b:
+        raise HTTPException(status_code=404, detail="Bandobast not found")
+    # Find which staff record this mobile belongs to (home or OD)
+    me = None
+    async for x in db.staff.find({}, {"_id": 0}):
+        if _normalize_mobile(x.get("mobile") or "") == mob:
+            me = x; break
+    if not me:
+        for s in (b.get("other_district_staff") or []):
+            if _normalize_mobile(s.get("mobile") or "") == mob:
+                me = s; break
+    if not me:
+        raise HTTPException(status_code=404, detail="Staff not found")
+    sid = me["id"]
+    # Find the point I'm allotted to
+    point = _point_for_staff(b, sid)
+    if not point:
+        return {
+            "bandobast": {"id": b["id"], "name": b.get("name"), "date": b.get("date"), "spot": b.get("spot"), "in_charge": b.get("in_charge"), "ps_name": b.get("ps_name")},
+            "me": me,
+            "point": None,
+            "equipment_for_me": None,
+            "co_staff": [],
+            "map_url": None,
+        }
+    eq = ((b.get("equipment_assignments") or {}).get(point["id"]) or {}).get(sid)
+    co_ids = _co_staff_ids(b, point["id"], sid)
+    co_staff = []
+    for cid in co_ids:
+        cs = await _resolve_staff_for_bandobast(b, cid)
+        if cs:
+            cs_eq = ((b.get("equipment_assignments") or {}).get(point["id"]) or {}).get(cid)
+            co_staff.append({**cs, "equipment": cs_eq})
+    map_url = None
+    if point.get("latitude") is not None and point.get("longitude") is not None:
+        map_url = f"https://www.google.com/maps?q={point['latitude']},{point['longitude']}"
+    return {
+        "bandobast": {"id": b["id"], "name": b.get("name"), "date": b.get("date"), "spot": b.get("spot"), "in_charge": b.get("in_charge"), "ps_name": b.get("ps_name")},
+        "me": me,
+        "point": point,
+        "equipment_for_me": eq,
+        "co_staff": co_staff,
+        "map_url": map_url,
+    }
 
 
 # ========================= APP SETUP =========================
