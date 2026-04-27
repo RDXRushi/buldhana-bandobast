@@ -1,5 +1,5 @@
 from fastapi import FastAPI, APIRouter, HTTPException, UploadFile, File, Response
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -1167,6 +1167,22 @@ async def staff_app_bandobast_detail(bid: str, mobile: str):
 
 
 # ========================= APP SETUP =========================
+
+# ----- public docs (PDF user manuals) -----
+
+DOCS_DIR = Path("/app/docs")
+
+
+@api_router.get("/docs/staff-app-manual.pdf")
+async def staff_app_manual_pdf():
+    p = DOCS_DIR / "Buldhana_Bandobast_Staff_App_User_Manual.pdf"
+    if not p.exists():
+        raise HTTPException(status_code=404, detail="Manual not built yet")
+    return FileResponse(
+        str(p),
+        media_type="application/pdf",
+        filename="Buldhana_Bandobast_Staff_App_User_Manual.pdf",
+    )
 
 app.include_router(api_router)
 
