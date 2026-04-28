@@ -2,7 +2,8 @@ import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api, BACKEND_URL } from "../lib/api";
 import PointQR from "../components/PointQR";
-import { Shield, Printer } from "lucide-react";
+import { Printer } from "lucide-react";
+import BrandLogo from "../components/BrandLogo";
 
 export default function PrintBulkDutyPasses() {
   const { bid } = useParams();
@@ -45,8 +46,8 @@ export default function PrintBulkDutyPasses() {
             data-testid={`bulk-pass-${idx}`}
           >
             <div className="bg-[#2E3192] text-white px-5 py-3 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-md bg-[#FF9933] flex items-center justify-center">
-                <Shield className="w-6 h-6 text-white" />
+              <div className="w-10 h-10 rounded-md bg-white flex items-center justify-center overflow-hidden">
+                <BrandLogo size={36} bg={null} />
               </div>
               <div className="flex-1">
                 <div className="font-display font-black text-base leading-none">DUTY PASS</div>

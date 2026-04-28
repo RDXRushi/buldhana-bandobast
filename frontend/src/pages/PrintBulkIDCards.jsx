@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api } from "../lib/api";
-import { Shield, Printer } from "lucide-react";
+import { Printer } from "lucide-react";
+import BrandLogo from "../components/BrandLogo";
 
 export default function PrintBulkIDCards() {
   const { bid } = useParams();
@@ -48,8 +49,8 @@ export default function PrintBulkIDCards() {
             data-testid={`bulk-id-${s.id}`}
           >
             <div className="bg-[#2E3192] text-white px-3 py-2 flex items-center gap-2">
-              <div className="w-8 h-8 rounded-md bg-[#FF9933] flex items-center justify-center">
-                <Shield className="w-5 h-5 text-white" />
+              <div className="w-8 h-8 rounded-md bg-white flex items-center justify-center overflow-hidden">
+                <BrandLogo size={28} bg={null} />
               </div>
               <div>
                 <div className="font-display font-black text-xs leading-none">BULDHANA POLICE</div>

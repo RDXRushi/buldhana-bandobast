@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
-import { Shield, Printer } from "lucide-react";
+import { Printer } from "lucide-react";
+import BrandLogo from "../components/BrandLogo";
 
 export default function PrintIDCard() {
   const { staffId } = useParams();
@@ -49,8 +50,8 @@ export default function PrintIDCard() {
 
       <div className="bg-white border-2 border-[#2E3192] rounded-lg overflow-hidden w-[380px] shadow-xl print-page" data-testid="id-card">
         <div className="bg-[#2E3192] text-white px-4 py-3 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-md bg-[#FF9933] flex items-center justify-center">
-            <Shield className="w-6 h-6 text-white" />
+          <div className="w-10 h-10 rounded-md bg-white flex items-center justify-center overflow-hidden">
+            <BrandLogo size={36} bg={null} />
           </div>
           <div>
             <div className="font-display font-black text-sm leading-none">BULDHANA POLICE</div>

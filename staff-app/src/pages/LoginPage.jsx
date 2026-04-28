@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, setMobile, getBaseUrl } from "../api";
+import BrandLogo from "../components/BrandLogo";
 
 export default function LoginPage({ onAuthed }) {
   const [mobile, setMobileVal] = useState("");
@@ -37,6 +38,7 @@ export default function LoginPage({ onAuthed }) {
   return (
     <>
       <div className="app-header">
+        <BrandLogo size={40} bg="#FFFFFF" style={{ marginRight: 10 }} />
         <div>
           <h1>Buldhana Police</h1>
           <div className="sub">डिजिटल पोलीस बंदोबस्त — Staff App</div>

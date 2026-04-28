@@ -2,7 +2,8 @@ import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api, BACKEND_URL } from "../lib/api";
 import PointQR from "../components/PointQR";
-import { Shield, Printer } from "lucide-react";
+import { Printer } from "lucide-react";
+import BrandLogo from "../components/BrandLogo";
 
 export default function PrintDutyPass() {
   const { bid, pid, sid } = useParams();
@@ -49,8 +50,8 @@ export default function PrintDutyPass() {
 
       <div className="bg-white border-2 border-[#2E3192] rounded-lg overflow-hidden w-[500px] shadow-xl print-page" data-testid="duty-pass">
         <div className="bg-[#2E3192] text-white px-5 py-4 flex items-center gap-3">
-          <div className="w-12 h-12 rounded-md bg-[#FF9933] flex items-center justify-center">
-            <Shield className="w-7 h-7 text-white" />
+          <div className="w-12 h-12 rounded-md bg-white flex items-center justify-center overflow-hidden">
+            <BrandLogo size={44} bg={null} />
           </div>
           <div className="flex-1">
             <div className="font-display font-black text-lg leading-none">DUTY PASS</div>

@@ -4,7 +4,6 @@ import {
   LayoutDashboard,
   Users,
   ShieldPlus,
-  Shield,
   LogOut,
   UserCircle2,
   Trash2,
@@ -12,6 +11,7 @@ import {
   X,
 } from "lucide-react";
 import { L } from "../lib/i18n";
+import BrandLogo from "../components/BrandLogo";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -43,8 +43,8 @@ export default function AdminLayout() {
         data-testid="app-sidebar"
       >
         <div className={`flex items-center ${collapsed ? "justify-center" : "gap-3"} px-4 py-5 border-b border-[#202266]`}>
-          <div className="w-10 h-10 rounded-md bg-[#FF9933] flex items-center justify-center shadow-sm flex-shrink-0">
-            <Shield className="w-6 h-6 text-white" strokeWidth={2.5} />
+          <div className="w-10 h-10 rounded-md bg-white flex items-center justify-center shadow-sm flex-shrink-0 overflow-hidden">
+            <BrandLogo size={40} bg={null} />
           </div>
           {!collapsed && (
             <div className="leading-tight">

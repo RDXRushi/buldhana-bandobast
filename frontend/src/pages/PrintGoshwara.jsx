@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api } from "../lib/api";
-import { Shield, Printer, Download } from "lucide-react";
+import { Printer, Download } from "lucide-react";
+import BrandLogo from "../components/BrandLogo";
 
 export default function PrintGoshwara() {
   const { id } = useParams();
@@ -35,8 +36,8 @@ export default function PrintGoshwara() {
 
       <div className="max-w-5xl mx-auto">
         <div className="border-b-4 border-[#2E3192] pb-4 mb-6 flex items-center gap-4">
-          <div className="w-14 h-14 rounded-md bg-[#FF9933] flex items-center justify-center">
-            <Shield className="w-8 h-8 text-white" />
+          <div className="w-14 h-14 rounded-md bg-white border border-[#E5E7EB] flex items-center justify-center overflow-hidden">
+            <BrandLogo size={52} bg={null} />
           </div>
           <div>
             <h1 className="font-display font-black text-2xl text-[#0A0A0A]">Buldhana District Police</h1>

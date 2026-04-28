@@ -1,8 +1,9 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Shield, Lock, User } from "lucide-react";
+import { Lock, User } from "lucide-react";
 import { toast } from "sonner";
 import { Toaster } from "../components/ui/sonner";
+import BrandLogo from "../components/BrandLogo";
 
 const LOGIN_IMG = "https://customer-assets.emergentagent.com/job_duty-points-mgmt/artifacts/pvp903f4_03.jpg.jpeg";
 
@@ -43,8 +44,8 @@ export default function Login() {
           </div>
 
           <div className="flex items-center gap-3 mb-6">
-            <div className="w-12 h-12 rounded-md bg-[#2E3192] flex items-center justify-center shadow-sm">
-              <Shield className="w-7 h-7 text-white" strokeWidth={2.5} />
+            <div className="w-12 h-12 rounded-md bg-white border border-[#E5E7EB] flex items-center justify-center shadow-sm overflow-hidden">
+              <BrandLogo size={48} bg={null} />
             </div>
             <div>
               <h1 className="font-display font-black text-2xl tracking-tight text-[#0A0A0A]">

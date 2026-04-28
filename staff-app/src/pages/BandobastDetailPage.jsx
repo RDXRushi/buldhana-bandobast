@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api, getMobile } from "../api";
+import BrandLogo from "../components/BrandLogo";
 
 export default function BandobastDetailPage() {
   const { bid } = useParams();
@@ -108,7 +109,10 @@ export default function BandobastDetailPage() {
 
         {/* ID Card preview */}
         <div className="card" style={{ background: "linear-gradient(135deg, #FF9933, #E68A2E)", color: "white" }}>
-          <div style={{ fontSize: 11, opacity: 0.9 }}>BULDHANA POLICE — ID CARD</div>
+          <div style={{ fontSize: 11, opacity: 0.9, display: "flex", alignItems: "center", gap: 6 }}>
+            <BrandLogo size={20} bg="rgba(255,255,255,0.95)" />
+            BULDHANA POLICE — ID CARD
+          </div>
           <div style={{ display: "flex", gap: 12, marginTop: 10 }}>
             <div className="avatar" style={{ width: 64, height: 64, background: "rgba(255,255,255,0.25)", color: "white" }}>
               {me.photo ? <img src={me.photo} alt="me" /> : (me.name?.[0]?.toUpperCase() || "?")}

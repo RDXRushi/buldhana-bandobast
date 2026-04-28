@@ -83,18 +83,30 @@ def cover_page(canv, doc):
     canv.saveState()
     canv.setFillColor(SAFFRON)
     canv.rect(0, A4[1] - 200 * mm, A4[0], 200 * mm, fill=1, stroke=0)
+    # Maharashtra Police logo (white circle)
+    logo_path = "/app/frontend/src/assets/maharashtra-police-logo.png"
+    try:
+        from reportlab.lib.utils import ImageReader
+        canv.setFillColor(WHITE)
+        canv.circle(A4[0] / 2, A4[1] - 55 * mm, 18 * mm, fill=1, stroke=0)
+        canv.drawImage(ImageReader(logo_path),
+                       A4[0] / 2 - 16 * mm, A4[1] - 71 * mm,
+                       width=32 * mm, height=32 * mm,
+                       mask="auto", preserveAspectRatio=True)
+    except Exception:
+        pass
     canv.setFillColor(WHITE)
-    canv.setFont("Helvetica-Bold", 36)
-    canv.drawCentredString(A4[0] / 2, A4[1] - 80 * mm, "Buldhana Bandobast")
-    canv.setFont("Helvetica-Bold", 22)
-    canv.drawCentredString(A4[0] / 2, A4[1] - 95 * mm, "Staff App")
-    canv.setFont("Helvetica", 14)
-    canv.drawCentredString(A4[0] / 2, A4[1] - 110 * mm, "बुलढाणा बंदोबस्त — स्टाफ अ‍ॅप")
+    canv.setFont("Helvetica-Bold", 32)
+    canv.drawCentredString(A4[0] / 2, A4[1] - 100 * mm, "Buldhana Bandobast")
+    canv.setFont("Helvetica-Bold", 20)
+    canv.drawCentredString(A4[0] / 2, A4[1] - 113 * mm, "Staff App")
+    canv.setFont("Helvetica", 13)
+    canv.drawCentredString(A4[0] / 2, A4[1] - 126 * mm, "बुलढाणा बंदोबस्त — स्टाफ अ‍ॅप")
     canv.setFillColor(WHITE)
     canv.setFont("Helvetica", 12)
-    canv.drawCentredString(A4[0] / 2, A4[1] - 145 * mm, "Complete User Manual — A to Z")
+    canv.drawCentredString(A4[0] / 2, A4[1] - 150 * mm, "Complete User Manual — A to Z")
     canv.setFont("Helvetica", 10)
-    canv.drawCentredString(A4[0] / 2, A4[1] - 158 * mm, "(Bilingual: English + मराठी)")
+    canv.drawCentredString(A4[0] / 2, A4[1] - 162 * mm, "(Bilingual: English + मराठी)")
 
     # Footer block
     canv.setFillColor(GRAY_900)
