@@ -903,6 +903,60 @@ async def goshwara(bid: str):
     }
 
 
+# ----- Goshwara: PDF + DOCX downloads -----
+
+async def _build_goshwara_data(bid: str):
+    bandobast = await db.bandobasts.find_one({"id": bid}, {"_id": 0})
+    if not bandobast:
+        raise HTTPException(status_code=404, detail="Not found")
+    all_staff_ids = list({sid for sids in bandobast.get("allotments", {}).values() for sid in sids})
+    home_staff = await db.staff.find({"id": {"$in": all_staff_ids}}, {"_id": 0}).to_list(5000)
+    out_staff = [s for s in bandobast.get("other_district_staff", []) if s["id"] in set(all_staff_ids)]
+    staff_map = {s["id"]: s for s in home_staff}
+    for s in out_staff:
+        staff_map[s["id"]] = s
+    point_wise = []
+    for p in bandobast.get("points", []):
+        assigned = bandobast.get("allotments", {}).get(p["id"], [])
+        point_wise.append({
+            "point": p,
+            "staff": [staff_map[s] for s in assigned if s in staff_map],
+        })
+    return bandobast, point_wise
+
+
+def _safe_filename(name: str, fallback="goshwara") -> str:
+    keep = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"
+    out = "".join(ch if ch in keep else "_" for ch in (name or "").strip())
+    return out or fallback
+
+
+@api_router.get("/bandobasts/{bid}/goshwara.pdf")
+async def goshwara_pdf(bid: str):
+    from goshwara_export import render_goshwara_pdf
+    bandobast, point_wise = await _build_goshwara_data(bid)
+    pdf_bytes = render_goshwara_pdf(bandobast, point_wise)
+    fname = f"Goshwara_{_safe_filename(bandobast.get('name'))}_{bandobast.get('date','')}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
+@api_router.get("/bandobasts/{bid}/goshwara.docx")
+async def goshwara_docx(bid: str):
+    from goshwara_export import render_goshwara_docx
+    bandobast, point_wise = await _build_goshwara_data(bid)
+    docx_bytes = render_goshwara_docx(bandobast, point_wise)
+    fname = f"Goshwara_{_safe_filename(bandobast.get('name'))}_{bandobast.get('date','')}.docx"
+    return Response(
+        content=docx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
 @api_router.get("/bandobasts/{bid}/export/staff-wise")
 async def export_staff_wise(bid: str):
     bandobast = await db.bandobasts.find_one({"id": bid}, {"_id": 0})
