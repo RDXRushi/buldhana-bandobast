@@ -59,7 +59,7 @@ export default function PrintDutyPass() {
           </div>
           <div className="text-right text-xs">
             <div className="text-white/70">Valid</div>
-            <div className="font-bold">{new Date(b.date).toLocaleDateString()}</div>
+            <div className="font-bold">{new Date(b.date).toLocaleDateString()}{b.reporting_time ? ` · ${b.reporting_time}` : ""}</div>
           </div>
         </div>
 

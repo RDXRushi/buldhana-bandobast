@@ -48,7 +48,7 @@ export default function PrintGoshwara() {
         <div className="bg-[#F9FAFB] border border-[#E5E7EB] rounded-md p-4 mb-6">
           <div className="text-xl font-display font-bold">{b.name}</div>
           <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-            <div><span className="text-[#6B7280]">Date:</span> <strong>{new Date(b.date).toLocaleDateString()}</strong></div>
+            <div><span className="text-[#6B7280]">Date:</span> <strong>{new Date(b.date).toLocaleDateString()}</strong>{b.reporting_time ? <> &nbsp;<span className="text-[#6B7280]">Reporting:</span> <strong>{b.reporting_time}</strong></> : null}</div>
             <div><span className="text-[#6B7280]">Year:</span> <strong>{b.year}</strong></div>
             <div><span className="text-[#6B7280]">Spot:</span> <strong>{b.spot || "-"}</strong></div>
             <div><span className="text-[#6B7280]">PS:</span> <strong>{b.ps_name || "-"}</strong></div>

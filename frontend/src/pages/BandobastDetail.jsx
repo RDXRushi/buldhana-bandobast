@@ -100,7 +100,7 @@ export default function BandobastDetail() {
             </div>
             <div className="mt-2 flex flex-wrap gap-4 text-sm text-[#6B7280]">
               <span><strong>{L.year}:</strong> {b.year}</span>
-              <span><strong>{L.date}:</strong> {new Date(b.date).toLocaleDateString()}</span>
+              <span><strong>{L.date}:</strong> {new Date(b.date).toLocaleDateString()}{b.reporting_time ? ` · ${b.reporting_time}` : ""}</span>
               <span><strong>{L.spot}:</strong> {b.spot || "-"}</span>
               <span><strong>{L.psName}:</strong> {b.ps_name || "-"}</span>
               <span><strong>{L.inCharge}:</strong> {b.in_charge || "-"}</span>

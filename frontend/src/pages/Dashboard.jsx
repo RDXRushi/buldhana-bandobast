@@ -214,7 +214,7 @@ export default function Dashboard() {
               ) : bandobasts.map((b) => (
                 <TableRow key={b.id} data-testid={`bandobast-row-${b.id}`}>
                   <TableCell className="font-semibold">{b.year}</TableCell>
-                  <TableCell>{new Date(b.date).toLocaleDateString()}</TableCell>
+                  <TableCell>{new Date(b.date).toLocaleDateString()}{b.reporting_time ? ` · ${b.reporting_time}` : ""}</TableCell>
                   <TableCell className="font-medium">{b.name}</TableCell>
                   <TableCell>
                     <Badge className={b.status === "deployed" ? "bg-[#138808]/15 text-[#0E6306] hover:bg-[#138808]/20" : "bg-gray-100 text-gray-800 hover:bg-gray-200"}>

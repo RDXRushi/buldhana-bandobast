@@ -98,6 +98,7 @@ class Bandobast(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     year: int
     date: str  # ISO
+    reporting_time: str = ""  # "HH:MM" 24h, optional
     name: str
     spot: str = ""
     ps_name: str = ""
@@ -116,6 +117,7 @@ class Bandobast(BaseModel):
 class BandobastCreate(BaseModel):
     year: int
     date: str
+    reporting_time: Optional[str] = ""
     name: str
     spot: Optional[str] = ""
     ps_name: Optional[str] = ""
@@ -126,6 +128,7 @@ class BandobastCreate(BaseModel):
 class BandobastUpdate(BaseModel):
     year: Optional[int] = None
     date: Optional[str] = None
+    reporting_time: Optional[str] = None
     name: Optional[str] = None
     spot: Optional[str] = None
     ps_name: Optional[str] = None
@@ -832,8 +835,10 @@ async def point_qr(bid: str, pid: str):
     lines = [
         f"BANDOBAST: {bandobast.get('name', '')}",
         f"DATE: {bandobast.get('date', '')}",
-        f"POINT: {point.get('point_name', '')}",
     ]
+    if bandobast.get("reporting_time"):
+        lines.append(f"REPORTING TIME: {bandobast['reporting_time']}")
+    lines.append(f"POINT: {point.get('point_name', '')}")
     if point.get("sector"):
         lines.append(f"SECTOR: {point['sector']}")
     if lat is not None and lng is not None:
@@ -1138,7 +1143,7 @@ async def staff_app_bandobast_detail(bid: str, mobile: str):
     point = _point_for_staff(b, sid)
     if not point:
         return {
-            "bandobast": {"id": b["id"], "name": b.get("name"), "date": b.get("date"), "spot": b.get("spot"), "in_charge": b.get("in_charge"), "ps_name": b.get("ps_name")},
+            "bandobast": {"id": b["id"], "name": b.get("name"), "date": b.get("date"), "reporting_time": b.get("reporting_time", ""), "spot": b.get("spot"), "in_charge": b.get("in_charge"), "ps_name": b.get("ps_name")},
             "me": me,
             "point": None,
             "equipment_for_me": None,
@@ -1157,7 +1162,7 @@ async def staff_app_bandobast_detail(bid: str, mobile: str):
     if point.get("latitude") is not None and point.get("longitude") is not None:
         map_url = f"https://www.google.com/maps?q={point['latitude']},{point['longitude']}"
     return {
-        "bandobast": {"id": b["id"], "name": b.get("name"), "date": b.get("date"), "spot": b.get("spot"), "in_charge": b.get("in_charge"), "ps_name": b.get("ps_name")},
+        "bandobast": {"id": b["id"], "name": b.get("name"), "date": b.get("date"), "reporting_time": b.get("reporting_time", ""), "spot": b.get("spot"), "in_charge": b.get("in_charge"), "ps_name": b.get("ps_name")},
         "me": me,
         "point": point,
         "equipment_for_me": eq,

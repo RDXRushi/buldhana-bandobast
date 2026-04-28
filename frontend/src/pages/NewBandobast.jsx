@@ -51,6 +51,7 @@ export default function NewBandobast() {
   const [form, setForm] = useState({
     year: new Date().getFullYear(),
     date: new Date().toISOString().slice(0, 10),
+    reporting_time: "",
     name: "",
     spot: "",
     ps_name: "",
@@ -79,6 +80,7 @@ export default function NewBandobast() {
         setForm({
           year: data.year,
           date: data.date?.slice(0, 10) || "",
+          reporting_time: data.reporting_time || "",
           name: data.name,
           spot: data.spot || "",
           ps_name: data.ps_name || "",
@@ -144,6 +146,10 @@ export default function NewBandobast() {
             <div>
               <Label>{L.date}*</Label>
               <Input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} data-testid="bd-date" />
+            </div>
+            <div>
+              <Label>Reporting Time / हजर वेळ</Label>
+              <Input type="time" value={form.reporting_time} onChange={(e) => setForm({ ...form, reporting_time: e.target.value })} data-testid="bd-time" />
             </div>
             <div className="md:col-span-2">
               <Label>{L.bandobast} Name*</Label>

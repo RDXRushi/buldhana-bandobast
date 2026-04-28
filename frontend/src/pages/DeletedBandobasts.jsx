@@ -70,7 +70,7 @@ export default function DeletedBandobasts() {
             ) : items.map((b) => (
               <TableRow key={b.id} data-testid={`deleted-row-${b.id}`}>
                 <TableCell className="font-semibold">{b.year}</TableCell>
-                <TableCell>{new Date(b.date).toLocaleDateString()}</TableCell>
+                <TableCell>{new Date(b.date).toLocaleDateString()}{b.reporting_time ? ` · ${b.reporting_time}` : ""}</TableCell>
                 <TableCell className="font-medium">{b.name}</TableCell>
                 <TableCell>
                   <Badge className={b.status === "deployed" ? "bg-[#138808]/15 text-[#0E6306]" : "bg-gray-100 text-gray-800"}>
