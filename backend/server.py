@@ -832,32 +832,43 @@ async def point_qr(bid: str, pid: str):
         else:
             home_guards.append(line)
 
-    lines = [
-        f"BANDOBAST: {bandobast.get('name', '')}",
-        f"DATE: {bandobast.get('date', '')}",
-    ]
-    if bandobast.get("reporting_time"):
-        lines.append(f"REPORTING TIME: {bandobast['reporting_time']}")
-    lines.append(f"POINT: {point.get('point_name', '')}")
-    if point.get("sector"):
-        lines.append(f"SECTOR: {point['sector']}")
+    # ---------------------------------------------------------------------
+    # QR payload: a Google Maps URL so any QR scanner auto-opens it as a
+    # "navigate to this place" intent. Fall back to a plain text bundle
+    # when lat/lng is missing.
+    # ---------------------------------------------------------------------
     if lat is not None and lng is not None:
-        lines.append(f"MAP: https://www.google.com/maps?q={lat},{lng}")
-    if point.get("equipment"):
-        lines.append(f"EQUIPMENT: {', '.join(point['equipment'])}")
-    if officers:
-        lines.append("OFFICERS:")
-        lines.extend([f"- {o}" for o in officers])
-    if amaldars:
-        lines.append("AMALDARS:")
-        lines.extend([f"- {a}" for a in amaldars])
-    if home_guards:
-        lines.append("HOME GUARDS:")
-        lines.extend([f"- {h}" for h in home_guards])
-    if point.get("suchana"):
-        lines.append(f"SUCHANA: {point['suchana']}")
+        # Use the canonical Google Maps "search by query" URL. This is the
+        # same format Maps generates for shared pin links.
+        from urllib.parse import quote
+        label = quote(point.get("point_name", "") or "Bandobast Point", safe="")
+        text = f"https://www.google.com/maps/search/?api=1&query={lat},{lng}&query_place_id={label}"
+    else:
+        # No coordinates → embed the briefing as plain text fallback.
+        lines = [
+            f"BANDOBAST: {bandobast.get('name', '')}",
+            f"DATE: {bandobast.get('date', '')}",
+        ]
+        if bandobast.get("reporting_time"):
+            lines.append(f"REPORTING TIME: {bandobast['reporting_time']}")
+        lines.append(f"POINT: {point.get('point_name', '')}")
+        if point.get("sector"):
+            lines.append(f"SECTOR: {point['sector']}")
+        if point.get("equipment"):
+            lines.append(f"EQUIPMENT: {', '.join(point['equipment'])}")
+        if officers:
+            lines.append("OFFICERS:")
+            lines.extend([f"- {o}" for o in officers])
+        if amaldars:
+            lines.append("AMALDARS:")
+            lines.extend([f"- {a}" for a in amaldars])
+        if home_guards:
+            lines.append("HOME GUARDS:")
+            lines.extend([f"- {h}" for h in home_guards])
+        if point.get("suchana"):
+            lines.append(f"SUCHANA: {point['suchana']}")
+        text = "\n".join(lines)
 
-    text = "\n".join(lines)
     # Use higher version + lower error correction to accommodate more data
     qr = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=6, border=2)
     qr.add_data(text)
