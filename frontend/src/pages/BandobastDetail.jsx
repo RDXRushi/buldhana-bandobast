@@ -13,13 +13,14 @@ import {
   TableHeader,
   TableRow,
 } from "../components/ui/table";
-import { ChevronLeft, Download, Printer, QrCode, MapPin, IdCard, FileBarChart, Send, Pencil, Files, Bell } from "lucide-react";
+import { ChevronLeft, Download, Printer, QrCode, MapPin, IdCard, FileBarChart, Send, Pencil, Files, Bell, Map as MapIcon } from "lucide-react";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "../components/ui/dialog";
+import BandobastMapModal from "../components/BandobastMapModal";
 import { toast } from "sonner";
 
 export default function BandobastDetail() {
@@ -30,6 +31,7 @@ export default function BandobastDetail() {
   const [qrPoint, setQrPoint] = useState(null);
   const [alertStatus, setAlertStatus] = useState(null);
   const [alerting, setAlerting] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
 
   const load = async () => {
     try {
@@ -133,6 +135,14 @@ export default function BandobastDetail() {
               data-testid="export-staff-wise-btn"
             >
               <Download className="w-4 h-4 mr-2" /> Excel Roster
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setMapOpen(true)}
+              data-testid="map-view-btn"
+              className="border-[#138808] text-[#0E6306] hover:bg-[#138808]/10"
+            >
+              <MapIcon className="w-4 h-4 mr-2" /> 🗺️ Map View
             </Button>
             <Button
               className="bg-[#FF9933] hover:bg-[#E68A2E] text-white"
@@ -299,6 +309,14 @@ export default function BandobastDetail() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Map View Modal */}
+      <BandobastMapModal
+        open={mapOpen}
+        onClose={() => setMapOpen(false)}
+        bandobastName={b.name}
+        pointWise={data.point_wise}
+      />
     </div>
   );
 }

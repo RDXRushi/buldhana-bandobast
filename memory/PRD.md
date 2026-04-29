@@ -58,6 +58,21 @@ All 9 new endpoints verified via curl on the deployed preview:
 - iOS build of the staff app.
 - Sign APKs with release keystore for Play Store.
 
+## 6.1 Apr 2026 — Map View + QR/Pass polish (this session)
+- **Point QR** now encodes `https://www.google.com/maps/search/?api=1&query={lat},{lng}&query_place_id={point_name}` so any QR scanner opens Google Maps directly. Falls back to plain text briefing when lat/lng missing. (`/app/backend/server.py:790-880`)
+- **Duty Pass** ( `PrintDutyPass.jsx`, `PrintBulkDutyPasses.jsx`): replaced the green "VALID" badge with `Date · Reporting Time` so the pass shows when the staff must report.
+- **Bandobast Detail → 🗺️ Map View** button (next to Deploy) opens an interactive OpenStreetMap (Leaflet) modal plotting every point that has lat/lng. Each marker popup shows point name, sector, coords, full allotted staff list (name · rank · bakkal) and an "Open in Google Maps" deep-link.
+  - New file: `/app/frontend/src/components/BandobastMapModal.jsx`
+  - Deps added: `leaflet@1.9.4`, `react-leaflet@5.0.0`
+  - Verified: 15/15 markers rendered + popup with Marathi staff names confirmed via Playwright.
+
+## 6.1 Apr 2026 — Map View + QR/Pass polish (this session)
+- **Point QR** now encodes `https://www.google.com/maps/search/?api=1&query={lat},{lng}&query_place_id={point_name}` so any QR scanner opens Google Maps directly. Falls back to plain text briefing when lat/lng missing. (`/app/backend/server.py:790-880`)
+- **Duty Pass** ( `PrintDutyPass.jsx`, `PrintBulkDutyPasses.jsx`): replaced the green "VALID" badge with `Date · Reporting Time` so the pass shows when the staff must report.
+- **Bandobast Detail → 🗺️ Map View** button (next to Deploy) opens an interactive OpenStreetMap (Leaflet) modal plotting every point that has lat/lng. Each marker popup shows point name, sector, coords, full allotted staff list (name · rank · bakkal) and an "Open in Google Maps" deep-link.
+  - New file: `/app/frontend/src/components/BandobastMapModal.jsx`
+  - Deps added: `leaflet@1.9.4`, `react-leaflet@5.0.0`
+
 ## 7. Files of reference
 | Area | Path |
 |---|---|
@@ -67,5 +82,3 @@ All 9 new endpoints verified via curl on the deployed preview:
 | **Staff app** | `/app/staff-app/**` (new) |
 | Workflows | `/app/.github/workflows/build-android.yml`, `/app/.github/workflows/build-staff-apk.yml` |
 
-## 8. Test credentials
-Admin: `admin` / `admin`. Staff: any mobile number that exists in the staff DB.
