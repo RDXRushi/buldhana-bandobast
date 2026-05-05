@@ -1109,12 +1109,11 @@ class StaffAppLogin(BaseModel):
 
 
 class StaffAppProfileUpdate(BaseModel):
-    name: Optional[str] = None
+    # Only these three fields are user-editable from the staff app.
+    # All other staff fields (name, mobile, gender, district, category,
+    # bakkal_no, staff_type) are managed by the admin panel.
     rank: Optional[str] = None
     posting: Optional[str] = None
-    gender: Optional[str] = None
-    district: Optional[str] = None
-    category: Optional[str] = None
     photo: Optional[str] = None  # base64 data url
 
 
@@ -1253,6 +1252,62 @@ async def staff_app_manual_pdf():
         media_type="application/pdf",
         filename="Buldhana_Bandobast_Staff_App_User_Manual.pdf",
     )
+
+
+# ----- Android APK download for the staff app -----
+APK_DIR = Path("/app/docs/apk")
+
+
+def _find_staff_apk() -> Optional[Path]:
+    """
+    Look for the latest Buldhana Staff APK in known locations.
+    Priority:
+      1. /app/docs/apk/BuldhanaBandobastStaff.apk  (manual upload location)
+      2. /app/staff-app/android/app/build/outputs/apk/release/app-release.apk
+      3. /app/staff-app/android/app/build/outputs/apk/debug/app-debug.apk
+    """
+    candidates = [
+        APK_DIR / "BuldhanaBandobastStaff.apk",
+        Path("/app/staff-app/android/app/build/outputs/apk/release/app-release.apk"),
+        Path("/app/staff-app/android/app/build/outputs/apk/release/app-release-unsigned.apk"),
+        Path("/app/staff-app/android/app/build/outputs/apk/debug/app-debug.apk"),
+    ]
+    for p in candidates:
+        if p.exists() and p.is_file():
+            return p
+    return None
+
+
+@api_router.get("/staff-app/apk")
+async def staff_app_apk_download():
+    p = _find_staff_apk()
+    if not p:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "Android APK not available yet. Build it via the GitHub Actions "
+                "workflow (.github/workflows/build-staff-apk.yml) and upload to "
+                "/app/docs/apk/BuldhanaBandobastStaff.apk on the server."
+            ),
+        )
+    return FileResponse(
+        str(p),
+        media_type="application/vnd.android.package-archive",
+        filename="BuldhanaBandobastStaff.apk",
+    )
+
+
+@api_router.get("/staff-app/apk-status")
+async def staff_app_apk_status():
+    p = _find_staff_apk()
+    if not p:
+        return {"available": False}
+    return {
+        "available": True,
+        "size_bytes": p.stat().st_size,
+        "path": str(p),
+    }
+
 
 app.include_router(api_router)
 

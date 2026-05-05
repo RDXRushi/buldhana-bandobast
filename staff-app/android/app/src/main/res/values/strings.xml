@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Buldhana Bandobast Staff</string>
-    <string name="title_activity_main">Buldhana Bandobast Staff</string>
+    <string name="app_name">Buldhana Police Staff App</string>
+    <string name="title_activity_main">Buldhana Police Staff App</string>
     <string name="package_name">in.buldhana.policebandobast.staff</string>
     <string name="custom_url_scheme">in.buldhana.policebandobast.staff</string>
 </resources>

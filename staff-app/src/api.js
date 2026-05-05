@@ -63,6 +63,7 @@ export const api = {
   alerts: (mobile) => request("GET", "/staff-app/alerts", { params: { mobile } }),
   markSeen: (bid, mobile) => request("POST", `/staff-app/alerts/${bid}/seen`, { params: { mobile } }),
   bandobast: (bid, mobile) => request("GET", `/staff-app/bandobast/${bid}`, { params: { mobile } }),
+  apkStatus: () => request("GET", "/staff-app/apk-status"),
   qrUrl: async (bid, pid) => {
     const base = await getBaseUrl();
     return `${base.replace(/\/$/, "")}/api/bandobasts/${bid}/points/${pid}/qr`;

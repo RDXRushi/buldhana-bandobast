@@ -30,8 +30,11 @@ export default function ProfilePage({ onLogout }) {
     setBusy(true);
     try {
       const mobile = await getMobile();
+      // Only Rank, Posting, Photo are user-editable from the staff app.
+      // Everything else (name, gender, district, category, bakkal_no, mobile,
+      // staff_type) is locked and managed by the admin.
       const payload = {};
-      for (const k of ["name", "rank", "posting", "gender", "district", "category", "photo"]) {
+      for (const k of ["rank", "posting", "photo"]) {
         if (form[k] !== undefined) payload[k] = form[k];
       }
       const updated = await api.updateMe(mobile, payload);
@@ -96,21 +99,31 @@ export default function ProfilePage({ onLogout }) {
 
         {!edit ? (
           <div className="card">
+            <Field label="Name / नाव" value={me.name} note="Locked — managed by admin" />
             <Field label="Mobile / मोबाईल" value={me.mobile} note="Locked — managed by admin" />
-            <Field label="Bakkal No / बक्कल" value={me.bakkal_no || "—"} />
+            <Field label="Bakkal No / बक्कल" value={me.bakkal_no || "—"} note="Locked — managed by admin" />
+            <Field label="Rank / पद" value={me.rank || "—"} />
             <Field label="Posting / पोस्टिंग" value={me.posting || "—"} />
-            <Field label="Gender / लिंग" value={me.gender || "—"} />
-            <Field label="District / जिल्हा" value={me.district || "—"} />
-            <Field label="Category / प्रवर्ग" value={me.category || "—"} />
+            <Field label="Gender / लिंग" value={me.gender || "—"} note="Locked — managed by admin" />
+            <Field label="District / जिल्हा" value={me.district || "—"} note="Locked — managed by admin" />
+            <Field label="Category / प्रवर्ग" value={me.category || "—"} note="Locked — managed by admin" />
           </div>
         ) : (
           <div className="card">
-            <EditField label="Name / नाव"      value={form.name}     onChange={(v) => setForm({ ...form, name: v })} />
-            <EditField label="Rank / पद"       value={form.rank}     onChange={(v) => setForm({ ...form, rank: v })} />
-            <EditField label="Posting / पोस्टिंग" value={form.posting}  onChange={(v) => setForm({ ...form, posting: v })} />
-            <EditField label="Gender / लिंग"    value={form.gender}   onChange={(v) => setForm({ ...form, gender: v })} />
-            <EditField label="District / जिल्हा" value={form.district} onChange={(v) => setForm({ ...form, district: v })} />
-            <EditField label="Category / प्रवर्ग" value={form.category} onChange={(v) => setForm({ ...form, category: v })} />
+            <div style={{ background: "#FFF7ED", border: "1px solid #FED7AA", color: "#9A3412", fontSize: 12, padding: "8px 10px", borderRadius: 6, marginBottom: 12 }}>
+              You can edit only <strong>Rank</strong>, <strong>Posting</strong> and <strong>Photo</strong>.
+              Other fields are managed by the admin.
+              <br />
+              <em>फक्त पद, पोस्टिंग आणि फोटो बदलता येतील.</em>
+            </div>
+            <Field label="Name / नाव" value={form.name} note="Locked" />
+            <Field label="Mobile / मोबाईल" value={form.mobile} note="Locked" />
+            <Field label="Bakkal No / बक्कल" value={form.bakkal_no || "—"} note="Locked" />
+            <EditField label="Rank / पद" value={form.rank} onChange={(v) => setForm({ ...form, rank: v })} />
+            <EditField label="Posting / पोस्टिंग" value={form.posting} onChange={(v) => setForm({ ...form, posting: v })} />
+            <Field label="Gender / लिंग" value={form.gender || "—"} note="Locked" />
+            <Field label="District / जिल्हा" value={form.district || "—"} note="Locked" />
+            <Field label="Category / प्रवर्ग" value={form.category || "—"} note="Locked" />
             <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <button className="btn btn-outline" onClick={() => { setEdit(false); setForm(me); }}>Cancel</button>
               <button className="btn btn-green" onClick={save} disabled={busy} data-testid="save-profile-btn">{busy ? "Saving…" : "Save"}</button>

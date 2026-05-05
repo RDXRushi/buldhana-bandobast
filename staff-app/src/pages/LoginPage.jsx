@@ -2,21 +2,26 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, setMobile, getBaseUrl } from "../api";
 import BrandLogo from "../components/BrandLogo";
+import { unlockAudio, playPagerAlert } from "../pager";
 
 export default function LoginPage({ onAuthed }) {
   const [mobile, setMobileVal] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [base, setBase] = useState("");
+  const [apkAvail, setApkAvail] = useState(false);
   const nav = useNavigate();
 
   useEffect(() => {
     getBaseUrl().then((b) => setBase(b));
+    api.apkStatus().then((s) => setApkAvail(!!s?.available)).catch(() => {});
   }, []);
 
   const submit = async (e) => {
     e?.preventDefault?.();
     setErr("");
+    // Unlock audio on this user gesture so the pager tone can play later.
+    try { await unlockAudio(); } catch (_) {}
     const trimmed = (mobile || "").replace(/\D/g, "").slice(-10);
     if (trimmed.length !== 10) {
       setErr("Enter a valid 10-digit mobile number");
@@ -40,7 +45,7 @@ export default function LoginPage({ onAuthed }) {
       <div className="app-header">
         <BrandLogo size={40} bg="#FFFFFF" style={{ marginRight: 10 }} />
         <div>
-          <h1>Buldhana Police</h1>
+          <h1>Buldhana Police Staff App</h1>
           <div className="sub">डिजिटल पोलीस बंदोबस्त — Staff App</div>
         </div>
       </div>
@@ -70,6 +75,40 @@ export default function LoginPage({ onAuthed }) {
             </button>
           </form>
         </div>
+
+        {/* Test pager tone — lets the user verify alert sound + unlocks audio */}
+        <button
+          className="btn btn-outline"
+          style={{ marginTop: 8 }}
+          onClick={async () => { await unlockAudio(); playPagerAlert(5); }}
+          data-testid="test-pager-btn"
+        >
+          🔊 Test Pager Alert Tone (5s)
+        </button>
+
+        {/* Download Android APK */}
+        {apkAvail ? (
+          <a
+            href={`${base || ""}/api/staff-app/apk`}
+            className="btn btn-outline"
+            style={{ marginTop: 8, textDecoration: "none", textAlign: "center", display: "block" }}
+            data-testid="download-apk-btn"
+            download
+          >
+            ⬇️ Download Android App (.apk)
+          </a>
+        ) : (
+          <button
+            className="btn btn-outline"
+            style={{ marginTop: 8, opacity: 0.65 }}
+            disabled
+            title="APK build not yet uploaded. Run the GitHub Actions workflow build-staff-apk.yml and upload the file to /app/docs/apk/BuldhanaBandobastStaff.apk on the server."
+            data-testid="download-apk-btn-disabled"
+          >
+            ⬇️ Android App (APK build pending)
+          </button>
+        )}
+
         <button className="btn btn-outline" onClick={() => nav("/settings")} style={{ marginTop: 8 }}>
           ⚙ Settings {base ? "" : "(Backend not set)"}
         </button>

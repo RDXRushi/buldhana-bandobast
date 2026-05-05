@@ -1,6 +1,6 @@
 {
   "appId": "in.buldhana.policebandobast.staff",
-  "appName": "Buldhana Bandobast Staff",
+  "appName": "Buldhana Police Staff App",
   "webDir": "dist",
   "bundledWebRuntime": false,
   "android": {
@@ -10,7 +10,8 @@
   "plugins": {
     "LocalNotifications": {
       "smallIcon": "ic_stat_notify",
-      "iconColor": "#FF9933"
+      "iconColor": "#FF9933",
+      "sound": "pager.wav"
     }
   }
 }

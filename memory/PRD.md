@@ -66,6 +66,33 @@ All 9 new endpoints verified via curl on the deployed preview:
   - Deps added: `leaflet@1.9.4`, `react-leaflet@5.0.0`
   - Verified: 15/15 markers rendered + popup with Marathi staff names confirmed via Playwright.
 
+## 6.2 Apr 2026 — Staff App polish (this session)
+- **Staff app hosted as a web URL** (no install needed) at
+  `https://duty-points-mgmt.preview.emergentagent.com/staff-app/` (built `dist`
+  copied into `/app/frontend/public/staff-app/`).
+- **Pager alert tone**, 5 seconds, classic two-tone (1000 Hz / 1400 Hz)
+  synthesised via the Web Audio API (`/app/staff-app/src/pager.js`). Plays
+  automatically inside `pollOnce()` when a new bandobast alert is found, and
+  again from a "🔊 Test Pager Alert Tone (5s)" button on the login page so
+  the user can verify and unlock audio. For the native Android build, a
+  matching `pager.wav` is shipped at `res/raw/pager.wav` and registered as the
+  notification sound in `capacitor.config.json`.
+- **Download Android APK** button on the login page → `GET /api/staff-app/apk`.
+  The endpoint serves the latest APK from `/app/docs/apk/BuldhanaBandobastStaff.apk`
+  or falls back to the workflow-built APK paths under `android/app/build/outputs`.
+  Until an APK exists, the button shows "APK build pending" (disabled) and the
+  endpoint returns a helpful 404 explaining how to upload it.
+- **Profile edit lock-down**: only `rank`, `posting`, `photo` are editable.
+  All other fields (`name`, `mobile`, `bakkal_no`, `gender`, `district`,
+  `category`) are shown but marked `Locked — managed by admin`. The backend
+  `StaffAppProfileUpdate` Pydantic schema now strictly accepts only those three
+  fields, so a tampered client cannot change locked data.
+- **Branding**: app title is now **Buldhana Police Staff App** (HTML title,
+  Capacitor `appName`, Android `strings.xml`). Maharashtra Police logo is used
+  as the favicon, the in-app brand logo, and as the Android launcher icon —
+  generated for all density buckets (mdpi → xxxhdpi) plus adaptive-icon
+  foreground/background, via `/app/scripts/build_staff_app_assets.py`.
+
 ## 6.1 Apr 2026 — Map View + QR/Pass polish (this session)
 - **Point QR** now encodes `https://www.google.com/maps/search/?api=1&query={lat},{lng}&query_place_id={point_name}` so any QR scanner opens Google Maps directly. Falls back to plain text briefing when lat/lng missing. (`/app/backend/server.py:790-880`)
 - **Duty Pass** ( `PrintDutyPass.jsx`, `PrintBulkDutyPasses.jsx`): replaced the green "VALID" badge with `Date · Reporting Time` so the pass shows when the staff must report.

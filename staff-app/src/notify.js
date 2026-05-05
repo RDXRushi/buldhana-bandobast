@@ -1,6 +1,7 @@
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { Preferences } from "@capacitor/preferences";
 import { api, getMobile } from "./api";
+import { playPagerAlert, vibrateAlert } from "./pager";
 
 let pollHandle = null;
 
@@ -41,6 +42,12 @@ export async function pollOnce() {
   if (fresh.length) {
     await saveSeenIds(seen);
     await ensurePerm();
+    // 1) Play the pager tone for 5 seconds (works in both web & Capacitor).
+    try { playPagerAlert(5); } catch (_) {}
+    // 2) Vibrate the device if the API is available.
+    try { vibrateAlert(); } catch (_) {}
+    // 3) Schedule a native local notification (Android) — the OS will show it
+    //    even if the WebView is backgrounded.
     try {
       await LocalNotifications.schedule({
         notifications: fresh.map((a, i) => ({
